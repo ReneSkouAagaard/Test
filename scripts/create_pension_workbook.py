@@ -148,22 +148,33 @@ def main():
         proj[f"G{row}"] = f'=IF(A{row}="","",E{row}+F{row})'
         proj[f"H{row}"] = f'=IF(A{row}="","",MAX(0,Model!$B$6-G{row}))'
         proj[f"I{row}"] = f'=IF(A{row}="","",H{row}/(1-Model!$B$9))'
-        future_ages = f"$A$2:$A${last_row}"
-        public_income = f"IF({future_ages}>=Model!$B$11,Model!$B$20,0)"
-        bijob_income = (
-            f"IF(({future_ages}>=A{row})*({future_ages}<A{row}+Model!$B$15),"
-            f"Model!$B$22,0)"
-        )
-        net_need = f"(Model!$B$6-{public_income}-{bijob_income})"
-        proj[f"D{row}"] = (
-            f'=IF(A{row}="","",SUMPRODUCT(({future_ages}>=A{row})'
-            f'*({future_ages}<>"")*({net_need}>0)*{net_need}/(1-Model!$B$9)/'
-            f'(1+Model!$B$18)^({future_ages}-A{row})))'
-        )
+        first_helper_col = 14
+        last_helper_col = first_helper_col + MAX_ROWS - 1
+        first_helper = get_column_letter(first_helper_col)
+        last_helper = get_column_letter(last_helper_col)
+        proj[f"D{row}"] = f'=IF(A{row}="","",SUM({first_helper}{row}:{last_helper}{row}))'
         proj[f"J{row}"] = f'=IF(A{row}="","",C{row}-D{row})'
         proj[f"K{row}"] = f'=IF(A{row}="","",C{row}>=D{row})'
         proj[f"L{row}"] = f'=IF(A{row}="","",IF(A{row}>=Model!$B$11,Model!$B$19*(1+Model!$B$13)^B{row},0))'
         proj[f"M{row}"] = f'=IF(A{row}="","",IF(Model!$B$15>0,Model!$B$21*(1+Model!$B$13)^B{row},0))'
+
+    first_helper_col = 14
+    last_helper_col = first_helper_col + MAX_ROWS - 1
+    for col in range(first_helper_col, last_helper_col + 1):
+        offset = col - first_helper_col
+        col_letter = get_column_letter(col)
+        proj.cell(1, col, f"PV behov +{offset} aar")
+        for row in range(2, last_row + 1):
+            future_age = f"(A{row}+{offset})"
+            public_income = f"IF({future_age}>=Model!$B$11,Model!$B$20,0)"
+            bijob_income = f"IF({offset}<Model!$B$15,Model!$B$22,0)"
+            proj[f"{col_letter}{row}"] = (
+                f'=IF(A{row}="","",IF({future_age}>Model!$B$4,0,'
+                f'MAX(0,Model!$B$6-{public_income}-{bijob_income})/'
+                f'(1-Model!$B$9)/(1+Model!$B$18)^{offset}))'
+            )
+            money_style(proj[f"{col_letter}{row}"])
+        proj.column_dimensions[col_letter].hidden = True
 
     for col in range(1, 14):
         proj.column_dimensions[get_column_letter(col)].width = 18
