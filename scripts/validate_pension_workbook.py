@@ -96,16 +96,26 @@ def calculated_j2_with_change(cell, value):
 
 def main():
     calculate_with_libreoffice()
+    formulas = openpyxl.load_workbook(WORKBOOK, data_only=False)
+    formula_model = formulas["Model"]
+    formula_projection = formulas["Aarlig projektion"]
+    if formula_model["L48"].value != "=$B$18":
+        raise AssertionError("Model!L48 should reference the progressionsgraense input in Model!B18")
+    if formula_model["H48"].value != "=$B$19-G48":
+        raise AssertionError("Model!H48 should calculate payout start from reference age in Model!B19")
+    if formula_projection["J2"].value != '=IF(A2="","",AF2)':
+        raise AssertionError("Aarlig projektion!J2 should stay a short helper-cell reference")
+
     wb = openpyxl.load_workbook(CALCULATED, data_only=True)
     projection = wb["Aarlig projektion"]
     model = wb["Model"]
 
     helper_start = 15
-    helper_width = 17
+    helper_width = 18
     last_unmet = f"{get_column_letter(helper_start + 120 * helper_width + 16)}2"
     for cell in ["C2", "D2", "F2", "G2", "H2", "J2", "K2", "O2", "AE2", last_unmet]:
         assert_numeric(projection, cell)
-    for cell in ["B34", "B35", "B36"]:
+    for cell in ["B18", "B19", "B34", "B35", "B36"]:
         assert_numeric(model, cell)
     optimal_age = assert_numeric(model, "B28")
     if optimal_age < model["B5"].value or optimal_age > model["B4"].value:
@@ -125,6 +135,8 @@ def main():
         raise AssertionError("Changing Model!B8 did not change Aarlig projektion!J2")
     if calculated_j2_with_change("B16", 10_000) == baseline_j2:
         raise AssertionError("Changing Model!B16 did not change Aarlig projektion!J2")
+    if calculated_j2_with_change("B18", 100_000) == baseline_j2:
+        raise AssertionError("Changing Model!B18 did not change Aarlig projektion!J2")
 
     print("Workbook calculation OK")
 

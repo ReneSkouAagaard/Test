@@ -10,10 +10,10 @@ OUTPUT = Path(__file__).resolve().parents[1] / "pensionsalder_model.xlsx"
 MAX_YEARS = 121
 
 DEPOTS = [
-    {"name": "Midler i holdingselskab", "row": 41, "balance": "=4041000+2476000", "gain_tax": 0.22, "payout_tax": 0.42, "monthly": 0, "years": 0, "start_offset": "=$B$18-$B$5", "payout_years": 120, "low_dividend_limit": 158_800, "low_dividend_tax": 0.27, "salary_tax": 0.38},
+    {"name": "Midler i holdingselskab", "row": 41, "balance": "=4041000+2476000", "gain_tax": 0.22, "payout_tax": 0.42, "monthly": 0, "years": 0, "start_offset": "=$B$19-$B$5", "payout_years": 120, "low_dividend_limit": "=$B$18", "low_dividend_tax": 0.27, "salary_tax": 0.38},
     {"name": "Midler paa pension", "row": 42, "balance": 1_175_000, "gain_tax": 0.153, "payout_tax": 0.38, "monthly": 6_000, "years": 3, "start_offset": 3, "payout_years": 120, "low_dividend_limit": 0, "low_dividend_tax": 0, "salary_tax": 0},
-    {"name": "Frie midler paa aktiedepot", "row": 43, "balance": 107_000, "gain_tax": 0.42, "payout_tax": 0.0, "monthly": 9_000, "years": 3, "start_offset": "=$B$18-$B$5", "payout_years": 120, "low_dividend_limit": 0, "low_dividend_tax": 0, "salary_tax": 0},
-    {"name": "Frie midler paa aktiesparekonto", "row": 44, "balance": 201_000, "gain_tax": 0.17, "payout_tax": 0.0, "monthly": 0, "years": 0, "start_offset": "=$B$18-$B$5", "payout_years": 120, "low_dividend_limit": 0, "low_dividend_tax": 0, "salary_tax": 0},
+    {"name": "Frie midler paa aktiedepot", "row": 43, "balance": 107_000, "gain_tax": 0.42, "payout_tax": 0.0, "monthly": 9_000, "years": 3, "start_offset": "=$B$19-$B$5", "payout_years": 120, "low_dividend_limit": 0, "low_dividend_tax": 0, "salary_tax": 0},
+    {"name": "Frie midler paa aktiesparekonto", "row": 44, "balance": 201_000, "gain_tax": 0.17, "payout_tax": 0.0, "monthly": 0, "years": 0, "start_offset": "=$B$19-$B$5", "payout_years": 120, "low_dividend_limit": 0, "low_dividend_tax": 0, "salary_tax": 0},
 ]
 
 
@@ -93,6 +93,7 @@ def main():
         ("Bijob varighed efter selvpension", 5, "aar"),
         ("Investeringsejendomme foer skat", "=(149000+116000)/12", "kr pr maaned i dag"),
         ("Investeringsejendomme varighed efter selvpension", 30, "aar"),
+        ("Progressionsgraense aktieindkomst", 158_800, "kr i dag, 2 personer"),
         ("Referencealder for depotudbetalinger", 73, "aar"),
     ]
 
@@ -186,7 +187,7 @@ def main():
         ws[f"E{row}"] = depot["monthly"]
         ws[f"F{row}"] = depot["years"]
         ws[f"G{row}"] = depot["start_offset"]
-        ws[f"H{row}"] = f"=$B$18-G{row}"
+        ws[f"H{row}"] = f"=$B$19-G{row}"
         ws[f"I{row}"] = depot["payout_years"]
         ws[f"J{row}"] = f"=$B$9*(1-C{row})"
         ws[f"K{row}"] = f"=E{row}*12"
@@ -209,6 +210,7 @@ def main():
         "Depotudbetalinger kan kun bruges fra den beregnede startalder og inden for den valgte udbetalingsvarighed.",
         "Udbetalinger prioriteres pensionsdepot, holding, aktiedepot og ASK; resterende saldo investeres fortsat.",
         "Holding udbetales foerst som lavt beskattet udbytte op til den valgte graense og derefter som loen.",
+        "Progressionsgraensen for lavt beskattet udbytte fremskrives med inflationsinputtet i projektionen.",
         "Holding loen reducerer selskabets skattepligtige vaerdistigning i modellen, saa selskabsskat kun beregnes af afkast ud over loen.",
         "Behov for selvpension i oversigten er et enkelt nutidsvaerdiestimat baseret paa vaegtet realafkast efter skat.",
         "Likviditetsmangel viser, om depoternes udbetalingsregler giver underskud undervejs selv om samlet portefolje er stor nok.",
@@ -242,7 +244,7 @@ def main():
 
     last_row = MAX_YEARS + 1
     helper_start = 15
-    helper_width = 17
+    helper_width = 18
     helper_need_cols = []
     helper_unmet_cols = []
     helper_end_total_cols = []
@@ -275,6 +277,7 @@ def main():
                 f"End aktiedepot +{offset}",
                 f"End ASK +{offset}",
                 f"Mangel +{offset}",
+                f"PV behov rest +{offset}",
             ],
             start=col,
         ):
@@ -304,11 +307,6 @@ def main():
 
         first_gross_col = get_column_letter(helper_start + 7)
         last_gross_col = get_column_letter(helper_start + 11)
-        need_pv_terms = ",".join(
-            f"MAX(0,{col}{row}-{get_column_letter(helper_start + offset * helper_width + 1)}{row}*(1-Model!$M$48)-"
-            f"{get_column_letter(helper_start + offset * helper_width + 2)}{row}*(1-Model!$N$48))/(1+Model!$B$31)^{offset}"
-            for offset, col in enumerate(helper_need_cols)
-        )
         unmet_cells = ",".join(f"{col}{row}" for col in helper_unmet_cols)
         life_offset = f"MIN({MAX_YEARS - 1},MAX(0,Model!$B$4-A{row}))"
         helper_range = f"{first_helper_col}{row}:{last_helper_col}{row}"
@@ -321,7 +319,7 @@ def main():
             f'INDEX({helper_range},1,{life_offset}*{helper_width}+16)))'
         )
         proj[f"I{row}"] = f'=IF(A{row}="","",SUM({unmet_cells})=0)'
-        proj[f"J{row}"] = f'=IF(A{row}="","",SUM({need_pv_terms}))'
+        proj[f"J{row}"] = f'=IF(A{row}="","",{get_column_letter(helper_start + 17)}{row})'
         proj[f"K{row}"] = f'=IF(A{row}="","",SUM({unmet_cells}))'
         proj[f"L{row}"] = f'=IF(A{row}="","",IF(A{row}>=Model!$B$10,Model!$B$22*(1+Model!$B$13)^B{row},0))'
         proj[f"M{row}"] = f'=IF(A{row}="","",IF(Model!$B$15>0,Model!$B$24*(1+Model!$B$13)^B{row},0))'
@@ -331,7 +329,7 @@ def main():
             col = helper_start + offset * helper_width
             need_col, property_dividend, property_salary, holding_start, pension_start, aktie_start, ask_start = [get_column_letter(col + i) for i in range(7)]
             gross_pension, holding_dividend, holding_salary, gross_aktie, gross_ask = [get_column_letter(col + i) for i in range(7, 12)]
-            end_holding, end_pension, end_aktie, end_ask, unmet_col = [get_column_letter(col + i) for i in range(12, 17)]
+            end_holding, end_pension, end_aktie, end_ask, unmet_col, pv_col = [get_column_letter(col + i) for i in range(12, 18)]
             future_age = f"(A{row}+{offset})"
             years_from_now = f"(B{row}+{offset})"
             target = f"IF({future_age}>Model!$B$4-Model!$B$8,Model!$B$7,Model!$B$6)"
@@ -370,8 +368,9 @@ def main():
             remaining = f"{need_col}{row}"
             property_gross = f"IF({offset}<Model!$B$17,Model!$B$26,0)"
             property_after_corp = f"{property_gross}*(1-Model!$C$48)"
+            low_dividend_limit = f"{model_ref(f'L{holding_row}')}*(1+Model!$B$13)^{years_from_now}"
             proj[f"{property_dividend}{row}"] = (
-                f'=IF(A{row}="","",MIN({property_after_corp},Model!$L$48,'
+                f'=IF(A{row}="","",MIN({property_after_corp},{low_dividend_limit},'
                 f'MAX(0,{remaining})/MAX(0.000001,1-Model!$M$48)))'
             )
             remaining_after_property_dividend = f"MAX(0,{remaining}-{property_dividend}{row}*(1-Model!$M$48))"
@@ -393,7 +392,7 @@ def main():
             holding_available = available_formula(holding_row, future_age)
             holding_div_tax = model_ref(f"M{holding_row}")
             holding_salary_tax = model_ref(f"N{holding_row}")
-            holding_limit = f"MAX(0,{model_ref(f'L{holding_row}')}-{property_dividend}{row})"
+            holding_limit = f"MAX(0,{low_dividend_limit}-{property_dividend}{row})"
             proj[f"{holding_dividend}{row}"] = (
                 f'=IF(A{row}="","",IF({holding_available},'
                 f'MIN({holding_start}{row},{holding_limit},MAX(0,{remaining})/MAX(0.000001,1-{holding_div_tax})),0))'
@@ -433,6 +432,15 @@ def main():
                     rate = model_ref(f"J{depot_row}")
                     proj[f"{end_cell}{row}"] = f'=IF(A{row}="","",MAX(0,{start_cell}{row}-{gross_cell}{row})*(1+{rate}))'
             proj[f"{unmet_col}{row}"] = f'=IF(A{row}="","",{remaining})'
+            adjusted_need = (
+                f"MAX(0,{need_col}{row}-{property_dividend}{row}*(1-Model!$M$48)-"
+                f"{property_salary}{row}*(1-Model!$N$48))"
+            )
+            if offset == MAX_YEARS - 1:
+                next_pv = "0"
+            else:
+                next_pv = f"{get_column_letter(col + helper_width + 17)}{row}"
+            proj[f"{pv_col}{row}"] = f'=IF(A{row}="","",{adjusted_need}+{next_pv}/(1+Model!$B$31))'
 
     for col in range(1, 15):
         proj.column_dimensions[get_column_letter(col)].width = 18
