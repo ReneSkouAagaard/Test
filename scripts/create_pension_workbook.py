@@ -139,13 +139,16 @@ def main():
     ws["A33"] = "Alder"
     ws["A34"] = "Portefolje"
     ws["A35"] = "Behov for selvpension"
+    ws["A36"] = "Likviditetsmangel"
     for col in range(2, MAX_YEARS + 2):
         col_letter = get_column_letter(col)
         ws[f"{col_letter}33"] = f'=IF($B$5+COLUMN()-2<=$B$4,$B$5+COLUMN()-2,"")'
         ws[f"{col_letter}34"] = f'=IF({col_letter}$33="","",INDEX(\'Aarlig projektion\'!$C:$C,MATCH({col_letter}$33,\'Aarlig projektion\'!$A:$A,0)))'
         ws[f"{col_letter}35"] = f'=IF({col_letter}$33="","",INDEX(\'Aarlig projektion\'!$J:$J,MATCH({col_letter}$33,\'Aarlig projektion\'!$A:$A,0)))'
+        ws[f"{col_letter}36"] = f'=IF({col_letter}$33="","",INDEX(\'Aarlig projektion\'!$K:$K,MATCH({col_letter}$33,\'Aarlig projektion\'!$A:$A,0)))'
         money_style(ws[f"{col_letter}34"])
         money_style(ws[f"{col_letter}35"])
+        money_style(ws[f"{col_letter}36"])
         ws.column_dimensions[col_letter].width = 14
     style_header(ws[33])
     ws["A46"] = "Depotinput"
@@ -196,6 +199,7 @@ def main():
         "Depotudbetalinger kan kun bruges fra den beregnede startalder og inden for den valgte udbetalingsvarighed.",
         "Udbetalinger prioriteres ASK, aktiedepot, holding og pension; resterende saldo investeres fortsat efter depotets afkastskat.",
         "Behov for selvpension i oversigten er et enkelt nutidsvaerdiestimat baseret paa vaegtet realafkast efter skat.",
+        "Likviditetsmangel viser, om depoternes udbetalingsregler giver underskud undervejs selv om samlet portefolje er stor nok.",
     ]
     for row, text in enumerate(assumptions, start=56):
         ws[f"A{row}"] = text
@@ -210,8 +214,8 @@ def main():
         "Samlet portefolje ved selvpension",
         "Forbrug efter skat i foerste selvpensionsaar",
         "Indkomst efter skat i foerste selvpensionsaar",
-        "Nettoforbrug fra depoter",
-        "Brutto udbetaling fra depoter i foerste selvpensionsaar",
+        "Nettoforbrug fra depoter i foerste selvpensionsaar",
+        "Udbetalingsskat i foerste selvpensionsaar",
         "Slutsaldo ved levealder",
         "Kan gaa paa selvpension",
         "Behov for selvpension",
@@ -267,6 +271,9 @@ def main():
         helper_unmet_cols.append(letters[13])
         helper_end_total_cols.append(letters[9:13])
 
+    first_helper_col = get_column_letter(helper_start)
+    last_helper_col = get_column_letter(helper_start + MAX_YEARS * helper_width - 1)
+
     for row in range(2, last_row + 1):
         proj[f"A{row}"] = f'=IF(Model!$B$5+ROW()-2<=Model!$B$4,Model!$B$5+ROW()-2,"")'
         proj[f"B{row}"] = f'=IF(A{row}="","",A{row}-Model!$B$5)'
@@ -283,9 +290,16 @@ def main():
             for offset, col in enumerate(helper_need_cols)
         )
         unmet_cells = ",".join(f"{col}{row}" for col in helper_unmet_cols)
-        end_cols_last_offset = helper_end_total_cols[-1]
-        proj[f"G{row}"] = f'=IF(A{row}="","",SUM({first_gross_col}{row}:{last_gross_col}{row}))'
-        proj[f"H{row}"] = f'=IF(A{row}="","",SUM({",".join(f"{c}{row}" for c in end_cols_last_offset)}))'
+        life_offset = f"MIN({MAX_YEARS - 1},MAX(0,Model!$B$4-A{row}))"
+        helper_range = f"{first_helper_col}{row}:{last_helper_col}{row}"
+        proj[f"G{row}"] = f'=IF(A{row}="","",MAX(0,SUM({first_gross_col}{row}:{last_gross_col}{row})-F{row}))'
+        proj[f"H{row}"] = (
+            f'=IF(A{row}="","",SUM('
+            f'INDEX({helper_range},1,{life_offset}*{helper_width}+10),'
+            f'INDEX({helper_range},1,{life_offset}*{helper_width}+11),'
+            f'INDEX({helper_range},1,{life_offset}*{helper_width}+12),'
+            f'INDEX({helper_range},1,{life_offset}*{helper_width}+13)))'
+        )
         proj[f"I{row}"] = f'=IF(A{row}="","",SUM({unmet_cells})=0)'
         proj[f"J{row}"] = f'=IF(A{row}="","",SUM({need_pv_terms}))'
         proj[f"K{row}"] = f'=IF(A{row}="","",SUM({unmet_cells}))'
