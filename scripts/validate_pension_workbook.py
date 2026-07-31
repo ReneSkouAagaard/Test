@@ -101,9 +101,9 @@ def main():
     model = wb["Model"]
 
     helper_start = 15
-    helper_width = 15
-    last_unmet = f"{get_column_letter(helper_start + 120 * helper_width + 14)}2"
-    for cell in ["C2", "D2", "F2", "G2", "H2", "J2", "K2", "O2", "AC2", last_unmet]:
+    helper_width = 17
+    last_unmet = f"{get_column_letter(helper_start + 120 * helper_width + 16)}2"
+    for cell in ["C2", "D2", "F2", "G2", "H2", "J2", "K2", "O2", "AE2", last_unmet]:
         assert_numeric(projection, cell)
     for cell in ["B34", "B35", "B36"]:
         assert_numeric(model, cell)
@@ -114,7 +114,7 @@ def main():
     assert_numeric(model, "B30")
 
     life_offset = int(model["B4"].value - projection["A2"].value)
-    end_cols = [helper_start + life_offset * helper_width + i for i in range(10, 14)]
+    end_cols = [helper_start + life_offset * helper_width + i for i in range(12, 16)]
     expected_h2 = sum(projection[f"{get_column_letter(col)}2"].value for col in end_cols)
     actual_h2 = assert_numeric(projection, "H2")
     if abs(actual_h2 - expected_h2) > 1:
