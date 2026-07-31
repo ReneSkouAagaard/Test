@@ -7,8 +7,14 @@ from openpyxl.utils import get_column_letter
 
 
 OUTPUT = Path(__file__).resolve().parents[1] / "pensionsalder_model.xlsx"
-MAX_ROWS = 121
+MAX_YEARS = 121
 
+DEPOTS = [
+    {"name": "Midler i holdingselskab", "row": 31, "balance": 2_000_000, "gain_tax": 0.22, "payout_tax": 0.42, "monthly": 0, "years": 0, "start_offset": 38, "payout_years": 120},
+    {"name": "Midler paa pension", "row": 32, "balance": 3_000_000, "gain_tax": 0.153, "payout_tax": 0.38, "monthly": 0, "years": 0, "start_offset": 5, "payout_years": 120},
+    {"name": "Frie midler paa aktiedepot", "row": 33, "balance": 1_500_000, "gain_tax": 0.42, "payout_tax": 0.0, "monthly": 0, "years": 0, "start_offset": 38, "payout_years": 120},
+    {"name": "Frie midler paa aktiesparekonto", "row": 34, "balance": 500_000, "gain_tax": 0.17, "payout_tax": 0.0, "monthly": 0, "years": 0, "start_offset": 38, "payout_years": 120},
+]
 
 def money_style(cell):
     cell.number_format = '#,##0 "kr"'
@@ -25,6 +31,33 @@ def style_header(row):
         cell.alignment = Alignment(horizontal="center")
 
 
+def model_ref(cell):
+    return f"Model!${cell[0]}${cell[1:]}"
+
+
+def depot_balance_at_retirement(depot_row, years_cell):
+    rate = model_ref(f"J{depot_row}")
+    balance = model_ref(f"B{depot_row}")
+    annual_payment = model_ref(f"K{depot_row}")
+    payment_years = model_ref(f"F{depot_row}")
+    n = f"MIN(MAX(0,{years_cell}),{payment_years})"
+    return (
+        f"({balance}*(1+{rate})^{years_cell}+"
+        f"IF({n}<=0,0,IF({rate}=0,{annual_payment}*{n},"
+        f"{annual_payment}*((1+{rate})^{n}-1)/{rate})))"
+    )
+
+
+def contribution_formula(depot_row, years_from_now):
+    return f"IF({years_from_now}<{model_ref(f'F{depot_row}')},{model_ref(f'K{depot_row}')},0)"
+
+
+def available_formula(depot_row, future_age):
+    start_age = model_ref(f"H{depot_row}")
+    payout_years = model_ref(f"I{depot_row}")
+    return f"AND({future_age}>={start_age},{future_age}<({start_age}+{payout_years}))"
+
+
 def main():
     wb = Workbook()
     wb.calculation.fullCalcOnLoad = True
@@ -35,7 +68,8 @@ def main():
     proj = wb.create_sheet("Aarlig projektion")
     plan = wb.create_sheet("Udbetalingsplan")
 
-    # Model sheet
+    input_fill = PatternFill("solid", fgColor="FFF2CC")
+
     ws["A1"] = "Pensionsalder model"
     ws["A1"].font = Font(size=18, bold=True)
     ws["A3"] = "Input"
@@ -43,152 +77,273 @@ def main():
 
     inputs = [
         ("Levealder", 95, "aar"),
-        ("Nuvaerende portefolje", 7_000_000, "kr"),
-        ("Aarligt forbrug efter skat", 800_000, "kr i dag"),
-        ("Aarligt afkast REAL foer skat", 0.07, "%"),
-        ("Skat paa afkast", 0.22, "%"),
-        ("Skat paa udbetalinger", 0.38, "%"),
         ("Nuvaerende alder", 35, "aar"),
+        ("Aarligt forbrug efter skat", 800_000, "kr i dag"),
+        ("Lavere aarligt forbrug i sidste aar", 600_000, "kr i dag"),
+        ("Antal sidste aar med lavere forbrug", 0, "aar"),
+        ("Aarligt afkast REAL foer skat", 0.07, "%"),
         ("Offentlig pensionsudbetaling start", 73, "aar"),
         ("Sats for offentlig pension foer skat", 7_544, "kr pr maaned i dag"),
+        ("Skat paa oevrige indtaegter", 0.38, "%"),
         ("Inflation til nominelle visninger", 0.02, "%"),
         ("Bijob efter pensionsalder foer skat", 10_000, "kr pr maaned i dag"),
         ("Bijob varighed efter pensionsalder", 10, "aar"),
+        ("Investeringsejendomme foer skat", 0, "kr pr maaned i dag"),
+        ("Investeringsejendomme varighed efter pensionsalder", 0, "aar"),
+        ("Referencealder for depotudbetalinger", 73, "aar"),
     ]
 
-    start_row = 4
-    for idx, (label, value, unit) in enumerate(inputs, start=start_row):
-        ws[f"A{idx}"] = label
-        ws[f"B{idx}"] = value
-        ws[f"C{idx}"] = unit
+    for row, (label, value, unit) in enumerate(inputs, start=4):
+        ws[f"A{row}"] = label
+        ws[f"B{row}"] = value
+        ws[f"C{row}"] = unit
+        ws[f"B{row}"].fill = input_fill
         if "%" in unit:
-            pct_style(ws[f"B{idx}"])
+            pct_style(ws[f"B{row}"])
         elif "kr" in unit:
-            money_style(ws[f"B{idx}"])
+            money_style(ws[f"B{row}"])
 
-    ws["A17"] = "Beregninger"
-    ws["A17"].font = Font(size=13, bold=True)
+    ws["A21"] = "Beregninger"
+    ws["A21"].font = Font(size=13, bold=True)
     derived = {
-        "A18": "Aarligt realafkast efter skat",
-        "B18": "=B7*(1-B8)",
-        "A19": "Offentlig pension foer skat, aarligt",
-        "B19": "=B12*12",
-        "A20": "Offentlig pension efter skat, aarligt",
-        "B20": "=B19*(1-B9)",
-        "A21": "Bijob foer skat, aarligt",
-        "B21": "=B14*12",
-        "A22": "Bijob efter skat, aarligt",
-        "B22": "=B21*(1-B9)",
-        "A23": "Bijob varighed",
-        "B23": "=B15",
-        "A24": "Optimal pensionsalder",
-        "B24": '=IFERROR(INDEX(\'Aarlig projektion\'!A2:A122,MATCH(TRUE,\'Aarlig projektion\'!K2:K122,0)),"Ikke opnaaet")',
-        "A25": "Portefolje ved optimal alder",
-        "B25": '=IF(ISNUMBER(B24),INDEX(\'Aarlig projektion\'!C2:C122,MATCH(B24,\'Aarlig projektion\'!A2:A122,0)),"")',
-        "A26": "Behov ved optimal alder",
-        "B26": '=IF(ISNUMBER(B24),INDEX(\'Aarlig projektion\'!D2:D122,MATCH(B24,\'Aarlig projektion\'!A2:A122,0)),"")',
-        "A27": "Margin ved optimal alder",
-        "B27": '=IF(ISNUMBER(B24),B25-B26,"")',
+        "A22": "Offentlig pension foer skat, aarligt",
+        "B22": "=B11*12",
+        "A23": "Offentlig pension efter skat, aarligt",
+        "B23": "=B22*(1-B12)",
+        "A24": "Bijob foer skat, aarligt",
+        "B24": "=B14*12",
+        "A25": "Bijob efter skat, aarligt",
+        "B25": "=B24*(1-B12)",
+        "A26": "Investeringsejendomme foer skat, aarligt",
+        "B26": "=B16*12",
+        "A27": "Investeringsejendomme efter skat, aarligt",
+        "B27": "=B26*(1-B12)",
+        "A28": "Optimal pensionsalder",
+        "B28": '=IFERROR(INDEX(\'Aarlig projektion\'!A2:A122,MATCH(TRUE,\'Aarlig projektion\'!I2:I122,0)),"Ikke opnaaet")',
+        "A29": "Portefolje ved optimal alder",
+        "B29": '=IF(ISNUMBER(B28),INDEX(\'Aarlig projektion\'!C2:C122,MATCH(B28,\'Aarlig projektion\'!A2:A122,0)),"")',
+        "A30": "Samlet mangel ved optimal alder",
+        "B30": '=IF(ISNUMBER(B28),INDEX(\'Aarlig projektion\'!J2:J122,MATCH(B28,\'Aarlig projektion\'!A2:A122,0)),"")',
     }
     for cell, value in derived.items():
         ws[cell] = value
-    pct_style(ws["B18"])
-    for row in range(19, 28):
-        if row not in [23, 24]:
-            money_style(ws[f"B{row}"])
+    for row in [22, 23, 24, 25, 26, 27, 29, 30]:
+        money_style(ws[f"B{row}"])
 
-    ws["A29"] = "Antagelser"
-    ws["A29"].font = Font(size=13, bold=True)
+    ws["A36"] = "Depotinput"
+    ws["A36"].font = Font(size=13, bold=True)
+    depot_headers = [
+        "Depot",
+        "Startsaldo",
+        "Skat paa vaerdistigning",
+        "Skat paa udbetaling",
+        "Maanedlig indbetaling",
+        "Indbetaling varighed aar",
+        "Udbetaling starter aar foer referencealder",
+        "Udbetaling startalder",
+        "Udbetaling varighed aar",
+        "Aarligt realafkast efter skat",
+        "Aarlig indbetaling",
+    ]
+    for col, header in enumerate(depot_headers, start=1):
+        ws.cell(37, col, header)
+    style_header(ws[37])
+
+    for depot in DEPOTS:
+        row = depot["row"] + 7
+        ws[f"A{row}"] = depot["name"]
+        ws[f"B{row}"] = depot["balance"]
+        ws[f"C{row}"] = depot["gain_tax"]
+        ws[f"D{row}"] = depot["payout_tax"]
+        ws[f"E{row}"] = depot["monthly"]
+        ws[f"F{row}"] = depot["years"]
+        ws[f"G{row}"] = depot["start_offset"]
+        ws[f"H{row}"] = f"=$B$18-G{row}"
+        ws[f"I{row}"] = depot["payout_years"]
+        ws[f"J{row}"] = f"=$B$9*(1-C{row})"
+        ws[f"K{row}"] = f"=E{row}*12"
+        for cell in [f"B{row}", f"E{row}", f"K{row}"]:
+            money_style(ws[cell])
+        for cell in [f"C{row}", f"D{row}", f"J{row}"]:
+            pct_style(ws[cell])
+        for col in range(2, 10):
+            ws.cell(row, col).fill = input_fill
+
+    ws["A45"] = "Antagelser"
+    ws["A45"].font = Font(size=13, bold=True)
     assumptions = [
         "Alle hovedbeloeb er i realkroner, fordi afkastinput er realt.",
-        "Offentlig pension antages fuldt inflationsjusteret, saa dens reale koebekraft er konstant.",
-        "Bijob antages at starte ved pensionsalderen, loebe i det valgte antal aar og have konstant real koebekraft.",
-        "Portefoljebehovet er brutto foer udbetalingsskat og beregnes, saa portefoljen er 0 kr ved slutningen af levealderen.",
-        "Udbetalinger antages at ske ved starten af hvert pensionsaar; resterende saldo investeres fortsat.",
+        "De sidste aar med lavere forbrug regnes baglaens fra levealderen inklusiv levealder.",
+        "Bijob og investeringsejendomme antages at starte ved den valgte pensionsalder og loebe i de valgte antal aar.",
+        "Depotudbetalinger kan kun bruges fra den beregnede startalder og inden for den valgte udbetalingsvarighed.",
+        "Udbetalinger prioriteres ASK, aktiedepot, holding og pension; resterende saldo investeres fortsat efter depotets afkastskat.",
     ]
-    for i, text in enumerate(assumptions, start=30):
-        ws[f"A{i}"] = text
+    for row, text in enumerate(assumptions, start=46):
+        ws[f"A{row}"] = text
 
-    for col, width in {"A": 44, "B": 18, "C": 28}.items():
+    for col, width in {"A": 46, "B": 18, "C": 22, "D": 20, "E": 20, "F": 22, "G": 28, "H": 20, "I": 22, "J": 22, "K": 20}.items():
         ws.column_dimensions[col].width = width
-
-    input_fill = PatternFill("solid", fgColor="FFF2CC")
-    for row in range(4, 16):
-        ws[f"B{row}"].fill = input_fill
     ws.freeze_panes = "A4"
 
-    # Projection sheet
     headers = [
         "Alder",
         "Aar fra nu",
-        "Forventet portefolje",
-        "Nodvendig portefolje",
-        "Offentlig pension efter skat",
-        "Bijob efter skat i foerste pensionsaar",
-        "Samlet indkomst efter skat i foerste pensionsaar",
-        "Nettoforbrug fra portefolje",
-        "Brutto udbetaling fra portefolje",
-        "Margin",
+        "Samlet portefolje ved pension",
+        "Forbrug efter skat i foerste pensionsaar",
+        "Indkomst efter skat i foerste pensionsaar",
+        "Nettoforbrug fra depoter",
+        "Brutto udbetaling fra depoter i foerste pensionsaar",
+        "Slutsaldo ved levealder",
         "Kan pensioneres",
+        "Samlet mangel",
         "Offentlig pension nominelt foer skat",
         "Bijob nominelt foer skat i foerste pensionsaar",
+        "Investeringsejendomme nominelt foer skat i foerste pensionsaar",
     ]
     for col, header in enumerate(headers, start=1):
         proj.cell(1, col, header)
     style_header(proj[1])
 
-    last_row = MAX_ROWS + 1
-    for row in range(2, last_row + 1):
-        age_formula = f'=IF(Model!$B$10+ROW()-2<=Model!$B$4,Model!$B$10+ROW()-2,"")'
-        proj[f"A{row}"] = age_formula
-        proj[f"B{row}"] = f'=IF(A{row}="","",A{row}-Model!$B$10)'
-        proj[f"C{row}"] = f'=IF(A{row}="","",Model!$B$5*(1+Model!$B$18)^B{row})'
-        proj[f"E{row}"] = f'=IF(A{row}="","",IF(A{row}>=Model!$B$11,Model!$B$20,0))'
-        proj[f"F{row}"] = f'=IF(A{row}="","",IF(Model!$B$15>0,Model!$B$22,0))'
-        proj[f"G{row}"] = f'=IF(A{row}="","",E{row}+F{row})'
-        proj[f"H{row}"] = f'=IF(A{row}="","",MAX(0,Model!$B$6-G{row}))'
-        proj[f"I{row}"] = f'=IF(A{row}="","",H{row}/(1-Model!$B$9))'
-        first_helper_col = 14
-        last_helper_col = first_helper_col + MAX_ROWS - 1
-        first_helper = get_column_letter(first_helper_col)
-        last_helper = get_column_letter(last_helper_col)
-        proj[f"D{row}"] = f'=IF(A{row}="","",SUM({first_helper}{row}:{last_helper}{row}))'
-        proj[f"J{row}"] = f'=IF(A{row}="","",C{row}-D{row})'
-        proj[f"K{row}"] = f'=IF(A{row}="","",C{row}>=D{row})'
-        proj[f"L{row}"] = f'=IF(A{row}="","",IF(A{row}>=Model!$B$11,Model!$B$19*(1+Model!$B$13)^B{row},0))'
-        proj[f"M{row}"] = f'=IF(A{row}="","",IF(Model!$B$15>0,Model!$B$21*(1+Model!$B$13)^B{row},0))'
+    last_row = MAX_YEARS + 1
+    helper_start = 14
+    helper_width = 14
+    helper_unmet_cols = []
+    helper_end_total_cols = []
 
-    first_helper_col = 14
-    last_helper_col = first_helper_col + MAX_ROWS - 1
-    for col in range(first_helper_col, last_helper_col + 1):
-        offset = col - first_helper_col
-        col_letter = get_column_letter(col)
-        proj.cell(1, col, f"PV behov +{offset} aar")
-        for row in range(2, last_row + 1):
+    depot_rows_by_name = {depot["name"]: depot["row"] + 7 for depot in DEPOTS}
+    withdrawal_rows = [
+        depot_rows_by_name["Frie midler paa aktiesparekonto"],
+        depot_rows_by_name["Frie midler paa aktiedepot"],
+        depot_rows_by_name["Midler i holdingselskab"],
+        depot_rows_by_name["Midler paa pension"],
+    ]
+
+    for offset in range(MAX_YEARS):
+        col = helper_start + offset * helper_width
+        letters = [get_column_letter(col + i) for i in range(helper_width)]
+        for i, header in enumerate(
+            [
+                f"Behov +{offset}",
+                f"Start holding +{offset}",
+                f"Start pension +{offset}",
+                f"Start aktiedepot +{offset}",
+                f"Start ASK +{offset}",
+                f"Gross ASK +{offset}",
+                f"Gross aktiedepot +{offset}",
+                f"Gross holding +{offset}",
+                f"Gross pension +{offset}",
+                f"End holding +{offset}",
+                f"End pension +{offset}",
+                f"End aktiedepot +{offset}",
+                f"End ASK +{offset}",
+                f"Mangel +{offset}",
+            ],
+            start=col,
+        ):
+            proj.cell(1, i, header)
+            proj.column_dimensions[get_column_letter(i)].hidden = True
+        helper_unmet_cols.append(letters[13])
+        helper_end_total_cols.append(letters[9:13])
+
+    for row in range(2, last_row + 1):
+        proj[f"A{row}"] = f'=IF(Model!$B$5+ROW()-2<=Model!$B$4,Model!$B$5+ROW()-2,"")'
+        proj[f"B{row}"] = f'=IF(A{row}="","",A{row}-Model!$B$5)'
+        starting_balances = [depot_balance_at_retirement(depot["row"] + 7, f"B{row}") for depot in DEPOTS]
+        proj[f"C{row}"] = f'=IF(A{row}="","",SUM({",".join(starting_balances)}))'
+        proj[f"D{row}"] = f'=IF(A{row}="","",IF(A{row}>Model!$B$4-Model!$B$8,Model!$B$7,Model!$B$6))'
+        proj[f"E{row}"] = f'=IF(A{row}="","",IF(A{row}>=Model!$B$10,Model!$B$23,0)+IF(Model!$B$15>0,Model!$B$25,0)+IF(Model!$B$17>0,Model!$B$27,0))'
+        proj[f"F{row}"] = f'=IF(A{row}="","",MAX(0,D{row}-E{row}))'
+
+        first_gross_col = get_column_letter(helper_start + 5)
+        last_gross_col = get_column_letter(helper_start + 8)
+        unmet_cells = ",".join(f"{col}{row}" for col in helper_unmet_cols)
+        end_cols_last_offset = helper_end_total_cols[-1]
+        proj[f"G{row}"] = f'=IF(A{row}="","",SUM({first_gross_col}{row}:{last_gross_col}{row}))'
+        proj[f"H{row}"] = f'=IF(A{row}="","",SUM({",".join(f"{c}{row}" for c in end_cols_last_offset)}))'
+        proj[f"I{row}"] = f'=IF(A{row}="","",SUM({unmet_cells})=0)'
+        proj[f"J{row}"] = f'=IF(A{row}="","",SUM({unmet_cells}))'
+        proj[f"K{row}"] = f'=IF(A{row}="","",IF(A{row}>=Model!$B$10,Model!$B$22*(1+Model!$B$13)^B{row},0))'
+        proj[f"L{row}"] = f'=IF(A{row}="","",IF(Model!$B$15>0,Model!$B$24*(1+Model!$B$13)^B{row},0))'
+        proj[f"M{row}"] = f'=IF(A{row}="","",IF(Model!$B$17>0,Model!$B$26*(1+Model!$B$13)^B{row},0))'
+
+        for offset in range(MAX_YEARS):
+            col = helper_start + offset * helper_width
+            need_col, holding_start, pension_start, aktie_start, ask_start = [get_column_letter(col + i) for i in range(5)]
+            gross_ask, gross_aktie, gross_holding, gross_pension = [get_column_letter(col + i) for i in range(5, 9)]
+            end_holding, end_pension, end_aktie, end_ask, unmet_col = [get_column_letter(col + i) for i in range(9, 14)]
             future_age = f"(A{row}+{offset})"
-            public_income = f"IF({future_age}>=Model!$B$11,Model!$B$20,0)"
-            bijob_income = f"IF({offset}<Model!$B$15,Model!$B$22,0)"
-            proj[f"{col_letter}{row}"] = (
-                f'=IF(A{row}="","",IF({future_age}>Model!$B$4,0,'
-                f'MAX(0,Model!$B$6-{public_income}-{bijob_income})/'
-                f'(1-Model!$B$9)/(1+Model!$B$18)^{offset}))'
-            )
-            money_style(proj[f"{col_letter}{row}"])
-        proj.column_dimensions[col_letter].hidden = True
+            years_from_now = f"(B{row}+{offset})"
+            target = f"IF({future_age}>Model!$B$4-Model!$B$8,Model!$B$7,Model!$B$6)"
+            public_income = f"IF({future_age}>=Model!$B$10,Model!$B$23,0)"
+            job_income = f"IF({offset}<Model!$B$15,Model!$B$25,0)"
+            property_income = f"IF({offset}<Model!$B$17,Model!$B$27,0)"
+            proj[f"{need_col}{row}"] = f'=IF(A{row}="","",IF({future_age}>Model!$B$4,0,MAX(0,{target}-{public_income}-{job_income}-{property_income})))'
+
+            start_cells = {
+                depot_rows_by_name["Midler i holdingselskab"]: holding_start,
+                depot_rows_by_name["Midler paa pension"]: pension_start,
+                depot_rows_by_name["Frie midler paa aktiedepot"]: aktie_start,
+                depot_rows_by_name["Frie midler paa aktiesparekonto"]: ask_start,
+            }
+            end_cells = {
+                depot_rows_by_name["Midler i holdingselskab"]: end_holding,
+                depot_rows_by_name["Midler paa pension"]: end_pension,
+                depot_rows_by_name["Frie midler paa aktiedepot"]: end_aktie,
+                depot_rows_by_name["Frie midler paa aktiesparekonto"]: end_ask,
+            }
+            gross_cells = {
+                depot_rows_by_name["Frie midler paa aktiesparekonto"]: gross_ask,
+                depot_rows_by_name["Frie midler paa aktiedepot"]: gross_aktie,
+                depot_rows_by_name["Midler i holdingselskab"]: gross_holding,
+                depot_rows_by_name["Midler paa pension"]: gross_pension,
+            }
+
+            for depot in DEPOTS:
+                depot_row = depot["row"] + 7
+                start_cell = start_cells[depot_row]
+                if offset == 0:
+                    base = depot_balance_at_retirement(depot_row, f"B{row}")
+                else:
+                    prev_end = get_column_letter(col - helper_width + list(end_cells).index(depot_row) + 9)
+                    base = f"{prev_end}{row}"
+                proj[f"{start_cell}{row}"] = f'=IF(A{row}="","",{base}+{contribution_formula(depot_row, years_from_now)})'
+
+            remaining = f"{need_col}{row}"
+            for depot_row in withdrawal_rows:
+                gross_cell = gross_cells[depot_row]
+                start_cell = start_cells[depot_row]
+                tax = model_ref(f"D{depot_row}")
+                available = available_formula(depot_row, future_age)
+                proj[f"{gross_cell}{row}"] = (
+                    f'=IF(A{row}="","",IF({available},'
+                    f'MIN({start_cell}{row},MAX(0,{remaining})/MAX(0.000001,1-{tax})),0))'
+                )
+                remaining = f"MAX(0,{remaining}-{gross_cell}{row}*(1-{tax}))"
+
+            for depot in DEPOTS:
+                depot_row = depot["row"] + 7
+                start_cell = start_cells[depot_row]
+                end_cell = end_cells[depot_row]
+                gross_cell = gross_cells.get(depot_row)
+                if gross_cell is None:
+                    raise RuntimeError("Missing gross cell")
+                rate = model_ref(f"J{depot_row}")
+                proj[f"{end_cell}{row}"] = f'=IF(A{row}="","",MAX(0,{start_cell}{row}-{gross_cell}{row})*(1+{rate}))'
+            proj[f"{unmet_col}{row}"] = f'=IF(A{row}="","",{remaining})'
 
     for col in range(1, 14):
         proj.column_dimensions[get_column_letter(col)].width = 18
     for row in range(2, last_row + 1):
-        for col in [3, 4, 5, 6, 7, 8, 9, 10, 12, 13]:
+        for col in [3, 4, 5, 6, 7, 8, 10, 11, 12, 13]:
             money_style(proj.cell(row, col))
     proj.freeze_panes = "A2"
     proj.auto_filter.ref = f"A1:M{last_row}"
 
     chart = LineChart()
-    chart.title = "Portefolje vs. behov"
+    chart.title = "Portefolje og slutsaldo"
     chart.y_axis.title = "Kr"
     chart.x_axis.title = "Alder"
-    data = Reference(proj, min_col=3, max_col=4, min_row=1, max_row=last_row)
+    data = Reference(proj, min_col=3, max_col=8, min_row=1, max_row=last_row)
     cats = Reference(proj, min_col=1, min_row=2, max_row=last_row)
     chart.add_data(data, titles_from_data=True)
     chart.set_categories(cats)
@@ -196,59 +351,74 @@ def main():
     chart.width = 24
     proj.add_chart(chart, "L2")
 
-    # Withdrawal plan sheet
     plan["A1"] = "Udbetalingsplan ved optimal pensionsalder"
     plan["A1"].font = Font(size=16, bold=True)
     plan["A3"] = "Valgt pensionsalder"
-    plan["B3"] = "=Model!B24"
+    plan["B3"] = "=Model!B28"
     plan["A4"] = "Startportefolje i plan"
-    plan["B4"] = '=IF(ISNUMBER(B3),INDEX(\'Aarlig projektion\'!D:D,MATCH(B3,\'Aarlig projektion\'!A:A,0)),"")'
+    plan["B4"] = '=IF(ISNUMBER(B3),INDEX(\'Aarlig projektion\'!C:C,MATCH(B3,\'Aarlig projektion\'!A:A,0)),"")'
     money_style(plan["B4"])
     plan["A5"] = "Bemerkning"
-    plan["B5"] = "Planen starter med den nodvendige portefolje, saa saldoen rammer 0 kr ved levealderen."
+    plan["B5"] = "Planen viser den simulerede brug af hvert depot ved den optimale pensionsalder."
 
     plan_headers = [
         "Alder",
-        "Startsaldo",
-        "Offentlig pension efter skat",
-        "Bijob efter skat",
-        "Samlet indkomst efter skat",
-        "Nettoforbrug fra portefolje",
-        "Brutto udbetaling",
-        "Saldo efter udbetaling",
-        "Afkast efter skat",
-        "Slutsaldo",
+        "Holding start",
+        "Pension start",
+        "Aktiedepot start",
+        "ASK start",
+        "Forbrug efter skat",
+        "Indkomst efter skat",
+        "Netto fra depoter",
+        "Brutto ASK",
+        "Brutto aktiedepot",
+        "Brutto holding",
+        "Brutto pension",
+        "Mangel",
+        "Slutsaldo samlet",
     ]
     for col, header in enumerate(plan_headers, start=1):
         plan.cell(7, col, header)
     style_header(plan[7])
 
     for row in range(8, last_row + 7):
+        offset = row - 8
         if row == 8:
             plan[f"A{row}"] = '=IF(ISNUMBER($B$3),$B$3,"")'
-            plan[f"B{row}"] = '=IF(A8="","",$B$4)'
         else:
             prev = row - 1
             plan[f"A{row}"] = f'=IF(OR(A{prev}="",A{prev}>=Model!$B$4),"",A{prev}+1)'
-            plan[f"B{row}"] = f'=IF(A{row}="","",J{prev})'
-        plan[f"C{row}"] = f'=IF(A{row}="","",IF(A{row}>=Model!$B$11,Model!$B$20,0))'
-        plan[f"D{row}"] = f'=IF(A{row}="","",IF(A{row}<$B$3+Model!$B$15,Model!$B$22,0))'
-        plan[f"E{row}"] = f'=IF(A{row}="","",C{row}+D{row})'
-        plan[f"F{row}"] = f'=IF(A{row}="","",MAX(0,Model!$B$6-E{row}))'
-        plan[f"G{row}"] = f'=IF(A{row}="","",F{row}/(1-Model!$B$9))'
-        plan[f"H{row}"] = f'=IF(A{row}="","",MAX(0,B{row}-G{row}))'
-        plan[f"I{row}"] = f'=IF(A{row}="","",H{row}*Model!$B$18)'
-        plan[f"J{row}"] = f'=IF(A{row}="","",H{row}+I{row})'
 
-    for col in range(1, 11):
+        source_row = 'MATCH($B$3,\'Aarlig projektion\'!$A:$A,0)'
+        source_col = helper_start + offset * helper_width
+        for plan_col, source_offset in zip(range(2, 14), [1, 2, 3, 4, None, None, None, 5, 6, 7, 8, 13]):
+            col_letter = get_column_letter(plan_col)
+            if source_offset is None:
+                continue
+            source_letter = get_column_letter(source_col + source_offset)
+            plan[f"{col_letter}{row}"] = f'=IF(A{row}="","",INDEX(\'Aarlig projektion\'!{source_letter}:{source_letter},{source_row}))'
+
+        future_age = f"A{row}"
+        target = f"IF({future_age}>Model!$B$4-Model!$B$8,Model!$B$7,Model!$B$6)"
+        public_income = f"IF({future_age}>=Model!$B$10,Model!$B$23,0)"
+        job_income = f"IF({offset}<Model!$B$15,Model!$B$25,0)"
+        property_income = f"IF({offset}<Model!$B$17,Model!$B$27,0)"
+        plan[f"F{row}"] = f'=IF(A{row}="","",{target})'
+        plan[f"G{row}"] = f'=IF(A{row}="","",{public_income}+{job_income}+{property_income})'
+        plan[f"H{row}"] = f'=IF(A{row}="","",MAX(0,F{row}-G{row}))'
+        end_total_parts = [
+            f"INDEX('Aarlig projektion'!{get_column_letter(source_col + i)}:{get_column_letter(source_col + i)},{source_row})"
+            for i in range(9, 13)
+        ]
+        plan[f"N{row}"] = f'=IF(A{row}="","",SUM({",".join(end_total_parts)}))'
+
+    for col in range(1, 15):
         plan.column_dimensions[get_column_letter(col)].width = 18
-    plan.column_dimensions["B"].width = 22
-    plan.column_dimensions["J"].width = 22
     for row in range(8, last_row + 7):
-        for col in range(2, 11):
+        for col in range(2, 15):
             money_style(plan.cell(row, col))
     plan.freeze_panes = "A8"
-    plan.auto_filter.ref = f"A7:J{last_row + 6}"
+    plan.auto_filter.ref = f"A7:N{last_row + 6}"
 
     wb.save(OUTPUT)
     print(OUTPUT)

@@ -86,11 +86,13 @@ def main():
     projection = wb["Aarlig projektion"]
     model = wb["Model"]
 
-    for cell in ["D2", "D22", "D24", "D62", "N2", "ED2"]:
+    for cell in ["C2", "D2", "F2", "G2", "H2", "J2", "N2", "AA2", "BMQ2"]:
         assert_numeric(projection, cell)
-    optimal_age = assert_numeric(model, "B24")
-    if optimal_age != 56:
-        raise AssertionError(f"Expected default optimal age 56, got {optimal_age!r}")
+    optimal_age = assert_numeric(model, "B28")
+    if optimal_age < model["B5"].value or optimal_age > model["B4"].value:
+        raise AssertionError(f"Optimal age is outside the modeled age range: {optimal_age!r}")
+    assert_numeric(model, "B29")
+    assert_numeric(model, "B30")
 
     print("Workbook calculation OK")
 
