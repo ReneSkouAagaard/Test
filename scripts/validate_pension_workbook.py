@@ -1,5 +1,6 @@
 import subprocess
 import time
+from shutil import copyfile
 from pathlib import Path
 
 import openpyxl
@@ -36,7 +37,7 @@ def connect_to_calc():
     raise RuntimeError(f"Could not connect to LibreOffice: {last_error}")
 
 
-def calculate_with_libreoffice():
+def calculate_with_libreoffice(workbook=WORKBOOK, calculated=CALCULATED):
     cmd = [
         "soffice",
         "--headless",
@@ -51,16 +52,16 @@ def calculate_with_libreoffice():
             "com.sun.star.frame.Desktop", ctx
         )
         doc = desktop.loadComponentFromURL(
-            uno.systemPathToFileUrl(str(WORKBOOK)),
+            uno.systemPathToFileUrl(str(workbook)),
             "_blank",
             0,
             (prop("Hidden", True), prop("ReadOnly", False)),
         )
         if doc is None:
-            raise RuntimeError(f"Could not open {WORKBOOK}")
+            raise RuntimeError(f"Could not open {workbook}")
         doc.calculateAll()
         doc.storeAsURL(
-            uno.systemPathToFileUrl(str(CALCULATED)),
+            uno.systemPathToFileUrl(str(calculated)),
             (prop("FilterName", "Calc MS Excel 2007 XML"), prop("Overwrite", True)),
         )
         doc.close(True)
@@ -80,19 +81,39 @@ def assert_numeric(ws, cell):
     return value
 
 
+def calculated_j2_with_change(cell, value):
+    variant = Path(f"/tmp/pension-workbook-{cell.lower()}-{value}.xlsx")
+    calculated = Path(f"/tmp/pension-workbook-{cell.lower()}-{value}-calculated.xlsx")
+    copyfile(WORKBOOK, variant)
+    wb = openpyxl.load_workbook(variant)
+    wb["Model"][cell] = value
+    wb.save(variant)
+    calculate_with_libreoffice(variant, calculated)
+    result = openpyxl.load_workbook(calculated, data_only=True)
+    return assert_numeric(result["Aarlig projektion"], "J2")
+
+
 def main():
     calculate_with_libreoffice()
     wb = openpyxl.load_workbook(CALCULATED, data_only=True)
     projection = wb["Aarlig projektion"]
     model = wb["Model"]
 
-    for cell in ["C2", "D2", "F2", "G2", "H2", "J2", "N2", "AA2", "BMQ2"]:
+    for cell in ["C2", "D2", "F2", "G2", "H2", "J2", "K2", "O2", "AB2", "BMR2"]:
         assert_numeric(projection, cell)
+    for cell in ["B34", "B35"]:
+        assert_numeric(model, cell)
     optimal_age = assert_numeric(model, "B28")
     if optimal_age < model["B5"].value or optimal_age > model["B4"].value:
         raise AssertionError(f"Optimal age is outside the modeled age range: {optimal_age!r}")
     assert_numeric(model, "B29")
     assert_numeric(model, "B30")
+
+    baseline_j2 = assert_numeric(projection, "J2")
+    if calculated_j2_with_change("B8", 15) == baseline_j2:
+        raise AssertionError("Changing Model!B8 did not change Aarlig projektion!J2")
+    if calculated_j2_with_change("B16", 10_000) == baseline_j2:
+        raise AssertionError("Changing Model!B16 did not change Aarlig projektion!J2")
 
     print("Workbook calculation OK")
 

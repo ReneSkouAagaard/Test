@@ -10,11 +10,12 @@ OUTPUT = Path(__file__).resolve().parents[1] / "pensionsalder_model.xlsx"
 MAX_YEARS = 121
 
 DEPOTS = [
-    {"name": "Midler i holdingselskab", "row": 31, "balance": 2_000_000, "gain_tax": 0.22, "payout_tax": 0.42, "monthly": 0, "years": 0, "start_offset": 38, "payout_years": 120},
-    {"name": "Midler paa pension", "row": 32, "balance": 3_000_000, "gain_tax": 0.153, "payout_tax": 0.38, "monthly": 0, "years": 0, "start_offset": 5, "payout_years": 120},
-    {"name": "Frie midler paa aktiedepot", "row": 33, "balance": 1_500_000, "gain_tax": 0.42, "payout_tax": 0.0, "monthly": 0, "years": 0, "start_offset": 38, "payout_years": 120},
-    {"name": "Frie midler paa aktiesparekonto", "row": 34, "balance": 500_000, "gain_tax": 0.17, "payout_tax": 0.0, "monthly": 0, "years": 0, "start_offset": 38, "payout_years": 120},
+    {"name": "Midler i holdingselskab", "row": 41, "balance": 2_000_000, "gain_tax": 0.22, "payout_tax": 0.42, "monthly": 0, "years": 0, "start_offset": 38, "payout_years": 120},
+    {"name": "Midler paa pension", "row": 42, "balance": 3_000_000, "gain_tax": 0.153, "payout_tax": 0.38, "monthly": 0, "years": 0, "start_offset": 5, "payout_years": 120},
+    {"name": "Frie midler paa aktiedepot", "row": 43, "balance": 1_500_000, "gain_tax": 0.42, "payout_tax": 0.0, "monthly": 0, "years": 0, "start_offset": 38, "payout_years": 120},
+    {"name": "Frie midler paa aktiesparekonto", "row": 44, "balance": 500_000, "gain_tax": 0.17, "payout_tax": 0.0, "monthly": 0, "years": 0, "start_offset": 38, "payout_years": 120},
 ]
+
 
 def money_style(cell):
     cell.number_format = '#,##0 "kr"'
@@ -70,7 +71,7 @@ def main():
 
     input_fill = PatternFill("solid", fgColor="FFF2CC")
 
-    ws["A1"] = "Pensionsalder model"
+    ws["A1"] = "Selvpensionsmodel"
     ws["A1"].font = Font(size=18, bold=True)
     ws["A3"] = "Input"
     ws["A3"].font = Font(size=13, bold=True)
@@ -82,14 +83,14 @@ def main():
         ("Lavere aarligt forbrug i sidste aar", 600_000, "kr i dag"),
         ("Antal sidste aar med lavere forbrug", 0, "aar"),
         ("Aarligt afkast REAL foer skat", 0.07, "%"),
-        ("Offentlig pensionsudbetaling start", 73, "aar"),
-        ("Sats for offentlig pension foer skat", 7_544, "kr pr maaned i dag"),
+        ("Folkepension start", 73, "aar"),
+        ("Folkepension foer skat", 7_544, "kr pr maaned i dag"),
         ("Skat paa oevrige indtaegter", 0.38, "%"),
         ("Inflation til nominelle visninger", 0.02, "%"),
-        ("Bijob efter pensionsalder foer skat", 10_000, "kr pr maaned i dag"),
-        ("Bijob varighed efter pensionsalder", 10, "aar"),
+        ("Bijob efter selvpension foer skat", 10_000, "kr pr maaned i dag"),
+        ("Bijob varighed efter selvpension", 10, "aar"),
         ("Investeringsejendomme foer skat", 0, "kr pr maaned i dag"),
-        ("Investeringsejendomme varighed efter pensionsalder", 0, "aar"),
+        ("Investeringsejendomme varighed efter selvpension", 120, "aar"),
         ("Referencealder for depotudbetalinger", 73, "aar"),
     ]
 
@@ -106,9 +107,9 @@ def main():
     ws["A21"] = "Beregninger"
     ws["A21"].font = Font(size=13, bold=True)
     derived = {
-        "A22": "Offentlig pension foer skat, aarligt",
+        "A22": "Folkepension foer skat, aarligt",
         "B22": "=B11*12",
-        "A23": "Offentlig pension efter skat, aarligt",
+        "A23": "Folkepension efter skat, aarligt",
         "B23": "=B22*(1-B12)",
         "A24": "Bijob foer skat, aarligt",
         "B24": "=B14*12",
@@ -118,20 +119,37 @@ def main():
         "B26": "=B16*12",
         "A27": "Investeringsejendomme efter skat, aarligt",
         "B27": "=B26*(1-B12)",
-        "A28": "Optimal pensionsalder",
+        "A28": "Selvpensionsalder",
         "B28": '=IFERROR(INDEX(\'Aarlig projektion\'!A2:A122,MATCH(TRUE,\'Aarlig projektion\'!I2:I122,0)),"Ikke opnaaet")',
-        "A29": "Portefolje ved optimal alder",
+        "A29": "Portefolje ved selvpensionsalder",
         "B29": '=IF(ISNUMBER(B28),INDEX(\'Aarlig projektion\'!C2:C122,MATCH(B28,\'Aarlig projektion\'!A2:A122,0)),"")',
-        "A30": "Samlet mangel ved optimal alder",
-        "B30": '=IF(ISNUMBER(B28),INDEX(\'Aarlig projektion\'!J2:J122,MATCH(B28,\'Aarlig projektion\'!A2:A122,0)),"")',
+        "A30": "Samlet mangel ved selvpensionsalder",
+        "B30": '=IF(ISNUMBER(B28),INDEX(\'Aarlig projektion\'!K2:K122,MATCH(B28,\'Aarlig projektion\'!A2:A122,0)),"")',
+        "A31": "Vaegtet realafkast efter skat",
+        "B31": "=SUMPRODUCT(B48:B51,J48:J51)/SUM(B48:B51)",
     }
     for cell, value in derived.items():
         ws[cell] = value
     for row in [22, 23, 24, 25, 26, 27, 29, 30]:
         money_style(ws[f"B{row}"])
+    pct_style(ws["B31"])
 
-    ws["A36"] = "Depotinput"
-    ws["A36"].font = Font(size=13, bold=True)
+    ws["A32"] = "Oversigt pr. mulig selvpensionsalder"
+    ws["A32"].font = Font(size=13, bold=True)
+    ws["A33"] = "Alder"
+    ws["A34"] = "Portefolje"
+    ws["A35"] = "Behov for selvpension"
+    for col in range(2, MAX_YEARS + 2):
+        col_letter = get_column_letter(col)
+        ws[f"{col_letter}33"] = f'=IF($B$5+COLUMN()-2<=$B$4,$B$5+COLUMN()-2,"")'
+        ws[f"{col_letter}34"] = f'=IF({col_letter}$33="","",INDEX(\'Aarlig projektion\'!$C:$C,MATCH({col_letter}$33,\'Aarlig projektion\'!$A:$A,0)))'
+        ws[f"{col_letter}35"] = f'=IF({col_letter}$33="","",INDEX(\'Aarlig projektion\'!$J:$J,MATCH({col_letter}$33,\'Aarlig projektion\'!$A:$A,0)))'
+        money_style(ws[f"{col_letter}34"])
+        money_style(ws[f"{col_letter}35"])
+        ws.column_dimensions[col_letter].width = 14
+    style_header(ws[33])
+    ws["A46"] = "Depotinput"
+    ws["A46"].font = Font(size=13, bold=True)
     depot_headers = [
         "Depot",
         "Startsaldo",
@@ -146,8 +164,8 @@ def main():
         "Aarlig indbetaling",
     ]
     for col, header in enumerate(depot_headers, start=1):
-        ws.cell(37, col, header)
-    style_header(ws[37])
+        ws.cell(47, col, header)
+    style_header(ws[47])
 
     for depot in DEPOTS:
         row = depot["row"] + 7
@@ -169,16 +187,17 @@ def main():
         for col in range(2, 10):
             ws.cell(row, col).fill = input_fill
 
-    ws["A45"] = "Antagelser"
-    ws["A45"].font = Font(size=13, bold=True)
+    ws["A55"] = "Antagelser"
+    ws["A55"].font = Font(size=13, bold=True)
     assumptions = [
         "Alle hovedbeloeb er i realkroner, fordi afkastinput er realt.",
         "De sidste aar med lavere forbrug regnes baglaens fra levealderen inklusiv levealder.",
-        "Bijob og investeringsejendomme antages at starte ved den valgte pensionsalder og loebe i de valgte antal aar.",
+        "Bijob og investeringsejendomme antages at starte ved den valgte selvpensionsalder og loebe i de valgte antal aar.",
         "Depotudbetalinger kan kun bruges fra den beregnede startalder og inden for den valgte udbetalingsvarighed.",
         "Udbetalinger prioriteres ASK, aktiedepot, holding og pension; resterende saldo investeres fortsat efter depotets afkastskat.",
+        "Behov for selvpension i oversigten er et enkelt nutidsvaerdiestimat baseret paa vaegtet realafkast efter skat.",
     ]
-    for row, text in enumerate(assumptions, start=46):
+    for row, text in enumerate(assumptions, start=56):
         ws[f"A{row}"] = text
 
     for col, width in {"A": 46, "B": 18, "C": 22, "D": 20, "E": 20, "F": 22, "G": 28, "H": 20, "I": 22, "J": 22, "K": 20}.items():
@@ -188,25 +207,27 @@ def main():
     headers = [
         "Alder",
         "Aar fra nu",
-        "Samlet portefolje ved pension",
-        "Forbrug efter skat i foerste pensionsaar",
-        "Indkomst efter skat i foerste pensionsaar",
+        "Samlet portefolje ved selvpension",
+        "Forbrug efter skat i foerste selvpensionsaar",
+        "Indkomst efter skat i foerste selvpensionsaar",
         "Nettoforbrug fra depoter",
-        "Brutto udbetaling fra depoter i foerste pensionsaar",
+        "Brutto udbetaling fra depoter i foerste selvpensionsaar",
         "Slutsaldo ved levealder",
-        "Kan pensioneres",
-        "Samlet mangel",
-        "Offentlig pension nominelt foer skat",
-        "Bijob nominelt foer skat i foerste pensionsaar",
-        "Investeringsejendomme nominelt foer skat i foerste pensionsaar",
+        "Kan gaa paa selvpension",
+        "Behov for selvpension",
+        "Samlet likviditetsmangel",
+        "Folkepension nominelt foer skat",
+        "Bijob nominelt foer skat i foerste selvpensionsaar",
+        "Investeringsejendomme nominelt foer skat i foerste selvpensionsaar",
     ]
     for col, header in enumerate(headers, start=1):
         proj.cell(1, col, header)
     style_header(proj[1])
 
     last_row = MAX_YEARS + 1
-    helper_start = 14
+    helper_start = 15
     helper_width = 14
+    helper_need_cols = []
     helper_unmet_cols = []
     helper_end_total_cols = []
 
@@ -242,6 +263,7 @@ def main():
         ):
             proj.cell(1, i, header)
             proj.column_dimensions[get_column_letter(i)].hidden = True
+        helper_need_cols.append(letters[0])
         helper_unmet_cols.append(letters[13])
         helper_end_total_cols.append(letters[9:13])
 
@@ -256,15 +278,20 @@ def main():
 
         first_gross_col = get_column_letter(helper_start + 5)
         last_gross_col = get_column_letter(helper_start + 8)
+        need_pv_terms = ",".join(
+            f"{col}{row}/(1+Model!$B$31)^{offset}"
+            for offset, col in enumerate(helper_need_cols)
+        )
         unmet_cells = ",".join(f"{col}{row}" for col in helper_unmet_cols)
         end_cols_last_offset = helper_end_total_cols[-1]
         proj[f"G{row}"] = f'=IF(A{row}="","",SUM({first_gross_col}{row}:{last_gross_col}{row}))'
         proj[f"H{row}"] = f'=IF(A{row}="","",SUM({",".join(f"{c}{row}" for c in end_cols_last_offset)}))'
         proj[f"I{row}"] = f'=IF(A{row}="","",SUM({unmet_cells})=0)'
-        proj[f"J{row}"] = f'=IF(A{row}="","",SUM({unmet_cells}))'
-        proj[f"K{row}"] = f'=IF(A{row}="","",IF(A{row}>=Model!$B$10,Model!$B$22*(1+Model!$B$13)^B{row},0))'
-        proj[f"L{row}"] = f'=IF(A{row}="","",IF(Model!$B$15>0,Model!$B$24*(1+Model!$B$13)^B{row},0))'
-        proj[f"M{row}"] = f'=IF(A{row}="","",IF(Model!$B$17>0,Model!$B$26*(1+Model!$B$13)^B{row},0))'
+        proj[f"J{row}"] = f'=IF(A{row}="","",SUM({need_pv_terms}))'
+        proj[f"K{row}"] = f'=IF(A{row}="","",SUM({unmet_cells}))'
+        proj[f"L{row}"] = f'=IF(A{row}="","",IF(A{row}>=Model!$B$10,Model!$B$22*(1+Model!$B$13)^B{row},0))'
+        proj[f"M{row}"] = f'=IF(A{row}="","",IF(Model!$B$15>0,Model!$B$24*(1+Model!$B$13)^B{row},0))'
+        proj[f"N{row}"] = f'=IF(A{row}="","",IF(Model!$B$17>0,Model!$B$26*(1+Model!$B$13)^B{row},0))'
 
         for offset in range(MAX_YEARS):
             col = helper_start + offset * helper_width
@@ -331,13 +358,13 @@ def main():
                 proj[f"{end_cell}{row}"] = f'=IF(A{row}="","",MAX(0,{start_cell}{row}-{gross_cell}{row})*(1+{rate}))'
             proj[f"{unmet_col}{row}"] = f'=IF(A{row}="","",{remaining})'
 
-    for col in range(1, 14):
+    for col in range(1, 15):
         proj.column_dimensions[get_column_letter(col)].width = 18
     for row in range(2, last_row + 1):
-        for col in [3, 4, 5, 6, 7, 8, 10, 11, 12, 13]:
+        for col in [3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14]:
             money_style(proj.cell(row, col))
     proj.freeze_panes = "A2"
-    proj.auto_filter.ref = f"A1:M{last_row}"
+    proj.auto_filter.ref = f"A1:N{last_row}"
 
     chart = LineChart()
     chart.title = "Portefolje og slutsaldo"
@@ -351,20 +378,20 @@ def main():
     chart.width = 24
     proj.add_chart(chart, "L2")
 
-    plan["A1"] = "Udbetalingsplan ved optimal pensionsalder"
+    plan["A1"] = "Udbetalingsplan ved selvpensionsalder"
     plan["A1"].font = Font(size=16, bold=True)
-    plan["A3"] = "Valgt pensionsalder"
+    plan["A3"] = "Selvpensionsalder"
     plan["B3"] = "=Model!B28"
     plan["A4"] = "Startportefolje i plan"
     plan["B4"] = '=IF(ISNUMBER(B3),INDEX(\'Aarlig projektion\'!C:C,MATCH(B3,\'Aarlig projektion\'!A:A,0)),"")'
     money_style(plan["B4"])
     plan["A5"] = "Bemerkning"
-    plan["B5"] = "Planen viser den simulerede brug af hvert depot ved den optimale pensionsalder."
+    plan["B5"] = "Planen viser den simulerede brug af hvert depot ved selvpensionsalderen."
 
     plan_headers = [
         "Alder",
         "Holding start",
-        "Pension start",
+        "Pensionsdepot start",
         "Aktiedepot start",
         "ASK start",
         "Forbrug efter skat",
