@@ -100,7 +100,10 @@ def main():
     projection = wb["Aarlig projektion"]
     model = wb["Model"]
 
-    for cell in ["C2", "D2", "F2", "G2", "H2", "J2", "K2", "O2", "AB2", "BMR2"]:
+    helper_start = 15
+    helper_width = 15
+    last_unmet = f"{get_column_letter(helper_start + 120 * helper_width + 14)}2"
+    for cell in ["C2", "D2", "F2", "G2", "H2", "J2", "K2", "O2", "AC2", last_unmet]:
         assert_numeric(projection, cell)
     for cell in ["B34", "B35", "B36"]:
         assert_numeric(model, cell)
@@ -110,17 +113,15 @@ def main():
     assert_numeric(model, "B29")
     assert_numeric(model, "B30")
 
-    helper_start = 15
-    helper_width = 14
     life_offset = int(model["B4"].value - projection["A2"].value)
-    end_cols = [helper_start + life_offset * helper_width + i for i in range(9, 13)]
+    end_cols = [helper_start + life_offset * helper_width + i for i in range(10, 14)]
     expected_h2 = sum(projection[f"{get_column_letter(col)}2"].value for col in end_cols)
     actual_h2 = assert_numeric(projection, "H2")
     if abs(actual_h2 - expected_h2) > 1:
         raise AssertionError(f"Aarlig projektion!H2 should use balances at life expectancy, got {actual_h2}, expected {expected_h2}")
 
     baseline_j2 = assert_numeric(projection, "J2")
-    if calculated_j2_with_change("B8", 15) == baseline_j2:
+    if calculated_j2_with_change("B8", 5) == baseline_j2:
         raise AssertionError("Changing Model!B8 did not change Aarlig projektion!J2")
     if calculated_j2_with_change("B16", 10_000) == baseline_j2:
         raise AssertionError("Changing Model!B16 did not change Aarlig projektion!J2")
