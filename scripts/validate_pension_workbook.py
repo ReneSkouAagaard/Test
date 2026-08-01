@@ -103,19 +103,20 @@ def main():
         raise AssertionError("Model!L48 should reference the progressionsgraense input in Model!B18")
     if formula_model["H48"].value != "=$B$19-G48":
         raise AssertionError("Model!H48 should calculate payout start from reference age in Model!B19")
-    if formula_projection["J2"].value != '=IF(A2="","",AF2)':
+    if formula_projection["J2"].value != '=IF(A2="","",AJ2)':
         raise AssertionError("Aarlig projektion!J2 should stay a short helper-cell reference")
 
     wb = openpyxl.load_workbook(CALCULATED, data_only=True)
     projection = wb["Aarlig projektion"]
     model = wb["Model"]
 
-    helper_start = 15
-    helper_width = 18
+    helper_start = 19
+    helper_width = 19
     last_unmet = f"{get_column_letter(helper_start + 120 * helper_width + 16)}2"
-    for cell in ["C2", "D2", "F2", "G2", "H2", "J2", "K2", "O2", "AE2", last_unmet]:
+    last_nominal_unmet = f"{get_column_letter(helper_start + 120 * helper_width + 18)}2"
+    for cell in ["C2", "D2", "F2", "G2", "H2", "J2", "K2", "P2", "Q2", "R2", "S2", "AI2", last_unmet, last_nominal_unmet]:
         assert_numeric(projection, cell)
-    for cell in ["B18", "B19", "B34", "B35", "B36"]:
+    for cell in ["B18", "B19", "B34", "B35", "B36", "B38", "B39", "B40"]:
         assert_numeric(model, cell)
     optimal_age = assert_numeric(model, "B28")
     if optimal_age < model["B5"].value or optimal_age > model["B4"].value:

@@ -145,15 +145,22 @@ def main():
     ws["A34"] = "Portefolje"
     ws["A35"] = "Behov for selvpension"
     ws["A36"] = "Likviditetsmangel"
+    ws["A37"] = "Foerste alder med likviditetsmangel"
+    ws["A38"] = "Portefolje nominelt"
+    ws["A39"] = "Behov for selvpension nominelt"
+    ws["A40"] = "Likviditetsmangel nominelt"
     for col in range(2, MAX_YEARS + 2):
         col_letter = get_column_letter(col)
         ws[f"{col_letter}33"] = f'=IF($B$5+COLUMN()-2<=$B$4,$B$5+COLUMN()-2,"")'
         ws[f"{col_letter}34"] = f'=IF({col_letter}$33="","",INDEX(\'Aarlig projektion\'!$C:$C,MATCH({col_letter}$33,\'Aarlig projektion\'!$A:$A,0)))'
         ws[f"{col_letter}35"] = f'=IF({col_letter}$33="","",INDEX(\'Aarlig projektion\'!$J:$J,MATCH({col_letter}$33,\'Aarlig projektion\'!$A:$A,0)))'
         ws[f"{col_letter}36"] = f'=IF({col_letter}$33="","",INDEX(\'Aarlig projektion\'!$K:$K,MATCH({col_letter}$33,\'Aarlig projektion\'!$A:$A,0)))'
-        money_style(ws[f"{col_letter}34"])
-        money_style(ws[f"{col_letter}35"])
-        money_style(ws[f"{col_letter}36"])
+        ws[f"{col_letter}37"] = f'=IF({col_letter}$33="","",INDEX(\'Aarlig projektion\'!$O:$O,MATCH({col_letter}$33,\'Aarlig projektion\'!$A:$A,0)))'
+        ws[f"{col_letter}38"] = f'=IF({col_letter}$33="","",INDEX(\'Aarlig projektion\'!$Q:$Q,MATCH({col_letter}$33,\'Aarlig projektion\'!$A:$A,0)))'
+        ws[f"{col_letter}39"] = f'=IF({col_letter}$33="","",INDEX(\'Aarlig projektion\'!$R:$R,MATCH({col_letter}$33,\'Aarlig projektion\'!$A:$A,0)))'
+        ws[f"{col_letter}40"] = f'=IF({col_letter}$33="","",INDEX(\'Aarlig projektion\'!$P:$P,MATCH({col_letter}$33,\'Aarlig projektion\'!$A:$A,0)))'
+        for overview_row in [34, 35, 36, 38, 39, 40]:
+            money_style(ws[f"{col_letter}{overview_row}"])
         ws.column_dimensions[col_letter].width = 14
     style_header(ws[33])
     ws["A46"] = "Depotinput"
@@ -214,6 +221,8 @@ def main():
         "Holding loen reducerer selskabets skattepligtige vaerdistigning i modellen, saa selskabsskat kun beregnes af afkast ud over loen.",
         "Behov for selvpension i oversigten er et enkelt nutidsvaerdiestimat baseret paa vaegtet realafkast efter skat.",
         "Likviditetsmangel viser, om depoternes udbetalingsregler giver underskud undervejs selv om samlet portefolje er stor nok.",
+        "Nominelle overbliksbeloeb fremskrives med inflationsinputtet til den relevante alder.",
+        "Foerste alder med likviditetsmangel viser det foerste simulerede aar, hvor depoterne ikke kan daekke nettoforbruget.",
     ]
     for row, text in enumerate(assumptions, start=56):
         ws[f"A{row}"] = text
@@ -237,16 +246,21 @@ def main():
         "Folkepension nominelt foer skat",
         "Bijob nominelt foer skat i foerste selvpensionsaar",
         "Investeringsejendomme nominelt foer skat i foerste selvpensionsaar",
+        "Foerste alder med likviditetsmangel",
+        "Samlet likviditetsmangel nominelt",
+        "Samlet portefolje ved selvpension nominelt",
+        "Behov for selvpension nominelt",
     ]
     for col, header in enumerate(headers, start=1):
         proj.cell(1, col, header)
     style_header(proj[1])
 
     last_row = MAX_YEARS + 1
-    helper_start = 15
-    helper_width = 18
+    helper_start = 19
+    helper_width = 19
     helper_need_cols = []
     helper_unmet_cols = []
+    helper_nominal_unmet_cols = []
     helper_end_total_cols = []
 
     depot_rows_by_name = {depot["name"]: depot["row"] + 7 for depot in DEPOTS}
@@ -278,6 +292,7 @@ def main():
                 f"End ASK +{offset}",
                 f"Mangel +{offset}",
                 f"PV behov rest +{offset}",
+                f"Mangel nominel +{offset}",
             ],
             start=col,
         ):
@@ -285,6 +300,7 @@ def main():
             proj.column_dimensions[get_column_letter(i)].hidden = True
         helper_need_cols.append(letters[0])
         helper_unmet_cols.append(letters[16])
+        helper_nominal_unmet_cols.append(letters[18])
         helper_end_total_cols.append(letters[12:16])
 
     first_helper_col = get_column_letter(helper_start)
@@ -324,12 +340,21 @@ def main():
         proj[f"L{row}"] = f'=IF(A{row}="","",IF(A{row}>=Model!$B$10,Model!$B$22*(1+Model!$B$13)^B{row},0))'
         proj[f"M{row}"] = f'=IF(A{row}="","",IF(Model!$B$15>0,Model!$B$24*(1+Model!$B$13)^B{row},0))'
         proj[f"N{row}"] = f'=IF(A{row}="","",IF(Model!$B$17>0,Model!$B$26*(1+Model!$B$13)^B{row},0))'
+        first_shortage_age = ",".join(
+            f"IF({col}{row}>0,A{row}+{offset},999)"
+            for offset, col in enumerate(helper_unmet_cols)
+        )
+        nominal_unmet_cells = ",".join(f"{col}{row}" for col in helper_nominal_unmet_cols)
+        proj[f"O{row}"] = f'=IF(A{row}="","",IF(K{row}=0,"",MIN({first_shortage_age})))'
+        proj[f"P{row}"] = f'=IF(A{row}="","",SUM({nominal_unmet_cells}))'
+        proj[f"Q{row}"] = f'=IF(A{row}="","",C{row}*(1+Model!$B$13)^B{row})'
+        proj[f"R{row}"] = f'=IF(A{row}="","",J{row}*(1+Model!$B$13)^B{row})'
 
         for offset in range(MAX_YEARS):
             col = helper_start + offset * helper_width
             need_col, property_dividend, property_salary, holding_start, pension_start, aktie_start, ask_start = [get_column_letter(col + i) for i in range(7)]
             gross_pension, holding_dividend, holding_salary, gross_aktie, gross_ask = [get_column_letter(col + i) for i in range(7, 12)]
-            end_holding, end_pension, end_aktie, end_ask, unmet_col, pv_col = [get_column_letter(col + i) for i in range(12, 18)]
+            end_holding, end_pension, end_aktie, end_ask, unmet_col, pv_col, nominal_unmet_col = [get_column_letter(col + i) for i in range(12, 19)]
             future_age = f"(A{row}+{offset})"
             years_from_now = f"(B{row}+{offset})"
             target = f"IF({future_age}>Model!$B$4-Model!$B$8,Model!$B$7,Model!$B$6)"
@@ -432,6 +457,7 @@ def main():
                     rate = model_ref(f"J{depot_row}")
                     proj[f"{end_cell}{row}"] = f'=IF(A{row}="","",MAX(0,{start_cell}{row}-{gross_cell}{row})*(1+{rate}))'
             proj[f"{unmet_col}{row}"] = f'=IF(A{row}="","",{remaining})'
+            proj[f"{nominal_unmet_col}{row}"] = f'=IF(A{row}="","",{unmet_col}{row}*(1+Model!$B$13)^{years_from_now})'
             adjusted_need = (
                 f"MAX(0,{need_col}{row}-{property_dividend}{row}*(1-Model!$M$48)-"
                 f"{property_salary}{row}*(1-Model!$N$48))"
@@ -442,13 +468,13 @@ def main():
                 next_pv = f"{get_column_letter(col + helper_width + 17)}{row}"
             proj[f"{pv_col}{row}"] = f'=IF(A{row}="","",{adjusted_need}+{next_pv}/(1+Model!$B$31))'
 
-    for col in range(1, 15):
+    for col in range(1, 19):
         proj.column_dimensions[get_column_letter(col)].width = 18
     for row in range(2, last_row + 1):
-        for col in [3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14]:
+        for col in [3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 16, 17, 18]:
             money_style(proj.cell(row, col))
     proj.freeze_panes = "A2"
-    proj.auto_filter.ref = f"A1:N{last_row}"
+    proj.auto_filter.ref = f"A1:R{last_row}"
 
     chart = LineChart()
     chart.title = "Portefolje og slutsaldo"
