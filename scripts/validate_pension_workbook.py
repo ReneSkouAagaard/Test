@@ -105,6 +105,10 @@ def main():
         raise AssertionError("Model!H48 should calculate payout start from reference age in Model!B19")
     if formula_projection["J2"].value != '=IF(A2="","",AJ2)':
         raise AssertionError("Aarlig projektion!J2 should stay a short helper-cell reference")
+    if "Model!$B$26*(1+Model!$B$13)^" not in formula_projection["T2"].value:
+        raise AssertionError("Aarlig projektion!T2 should inflation-adjust property income")
+    if formulas["Udbetalingsplan"]["G8"].value != '=IF(A8="","",IF(A8>=Model!$B$10,Model!$B$23,0)+IF(0<Model!$B$15,Model!$B$25,0)+I8*(1-Model!$M$48)+J8*(1-Model!$N$48))':
+        raise AssertionError("Udbetalingsplan!G8 should use the inflation-adjusted property helper payout")
 
     wb = openpyxl.load_workbook(CALCULATED, data_only=True)
     projection = wb["Aarlig projektion"]

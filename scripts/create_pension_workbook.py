@@ -218,6 +218,7 @@ def main():
         "Udbetalinger prioriteres pensionsdepot, holding, aktiedepot og ASK; resterende saldo investeres fortsat.",
         "Holding udbetales foerst som lavt beskattet udbytte op til den valgte graense og derefter som loen.",
         "Progressionsgraensen for lavt beskattet udbytte fremskrives med inflationsinputtet i projektionen.",
+        "Indtjening fra investeringsejendomme fremskrives med inflationsinputtet for hvert simuleret aar.",
         "Holding loen reducerer selskabets skattepligtige vaerdistigning i modellen, saa selskabsskat kun beregnes af afkast ud over loen.",
         "Behov for selvpension i oversigten er et enkelt nutidsvaerdiestimat baseret paa vaegtet realafkast efter skat.",
         "Likviditetsmangel viser, om depoternes udbetalingsregler giver underskud undervejs selv om samlet portefolje er stor nok.",
@@ -391,7 +392,7 @@ def main():
                 proj[f"{start_cell}{row}"] = f'=IF(A{row}="","",{base}+{contribution_formula(depot_row, years_from_now)})'
 
             remaining = f"{need_col}{row}"
-            property_gross = f"IF({offset}<Model!$B$17,Model!$B$26,0)"
+            property_gross = f"IF({offset}<Model!$B$17,Model!$B$26*(1+Model!$B$13)^{years_from_now},0)"
             property_after_corp = f"{property_gross}*(1-Model!$C$48)"
             low_dividend_limit = f"{model_ref(f'L{holding_row}')}*(1+Model!$B$13)^{years_from_now}"
             proj[f"{property_dividend}{row}"] = (
@@ -542,9 +543,8 @@ def main():
         target = f"IF({future_age}>Model!$B$4-Model!$B$8,Model!$B$7,Model!$B$6)"
         public_income = f"IF({future_age}>=Model!$B$10,Model!$B$23,0)"
         job_income = f"IF({offset}<Model!$B$15,Model!$B$25,0)"
-        property_income = f"IF({offset}<Model!$B$17,Model!$B$27,0)"
         plan[f"F{row}"] = f'=IF(A{row}="","",{target})'
-        plan[f"G{row}"] = f'=IF(A{row}="","",{public_income}+{job_income}+{property_income})'
+        plan[f"G{row}"] = f'=IF(A{row}="","",{public_income}+{job_income}+I{row}*(1-Model!$M$48)+J{row}*(1-Model!$N$48))'
         plan[f"H{row}"] = f'=IF(A{row}="","",MAX(0,F{row}-G{row}))'
         end_total_parts = [
             f"INDEX('Aarlig projektion'!{get_column_letter(source_col + i)}:{get_column_letter(source_col + i)},{source_row})"
