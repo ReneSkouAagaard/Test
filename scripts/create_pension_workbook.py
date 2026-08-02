@@ -8,12 +8,17 @@ from openpyxl.utils import get_column_letter
 
 OUTPUT = Path(__file__).resolve().parents[1] / "pensionsalder_model.xlsx"
 MAX_YEARS = 121
+HOLDING_DEPOT_NAME = "Midler i holdingselskab"
+PROPERTY_DEPOT_NAME = "Investerings-ejendomme"
+HOLDING_MODEL_ROW = 48
+PROPERTY_MODEL_ROW = 52
 
 DEPOTS = [
-    {"name": "Midler i holdingselskab", "row": 41, "balance": "=4041000+2476000", "gain_tax": 0.22, "payout_tax": 0.42, "monthly": 0, "years": 0, "start_offset": "=$B$19-$B$5", "payout_years": 120, "low_dividend_limit": "=$B$18", "low_dividend_tax": 0.27, "salary_tax": 0.38},
+    {"name": HOLDING_DEPOT_NAME, "row": 41, "balance": "=4041000+2476000", "gain_tax": 0.22, "payout_tax": 0.42, "monthly": 0, "years": 0, "start_offset": "=$B$19-$B$5", "payout_years": 120, "low_dividend_limit": "=$B$18", "low_dividend_tax": 0.27, "salary_tax": 0.38},
     {"name": "Midler paa pension", "row": 42, "balance": 1_175_000, "gain_tax": 0.153, "payout_tax": 0.38, "monthly": 6_000, "years": 3, "start_offset": 3, "payout_years": 120, "low_dividend_limit": 0, "low_dividend_tax": 0, "salary_tax": 0},
     {"name": "Frie midler paa aktiedepot", "row": 43, "balance": 107_000, "gain_tax": 0.42, "payout_tax": 0.0, "monthly": 9_000, "years": 3, "start_offset": "=$B$19-$B$5", "payout_years": 120, "low_dividend_limit": 0, "low_dividend_tax": 0, "salary_tax": 0},
     {"name": "Frie midler paa aktiesparekonto", "row": 44, "balance": 201_000, "gain_tax": 0.17, "payout_tax": 0.0, "monthly": 0, "years": 0, "start_offset": "=$B$19-$B$5", "payout_years": 120, "low_dividend_limit": 0, "low_dividend_tax": 0, "salary_tax": 0},
+    {"name": PROPERTY_DEPOT_NAME, "row": 45, "balance": "=((3700000-3582782)+(3640000-3566770)+428000)", "gain_tax": 0.22, "payout_tax": 0.0, "monthly": "=144000/12", "years": "=$B$17", "start_offset": "=$B$19-$B$5", "payout_years": 0, "low_dividend_limit": 0, "low_dividend_tax": 0, "salary_tax": 0, "trade_cost": 0.05},
 ]
 
 
@@ -40,10 +45,10 @@ def depot_balance_at_retirement(depot_row, years_cell):
     rate = model_ref(f"J{depot_row}")
     balance = model_ref(f"B{depot_row}")
     annual_payment = model_ref(f"K{depot_row}")
-    if depot_row == 48:
-        annual_payment = f"({annual_payment}+Model!$B$26*(1-Model!$C${depot_row}))"
+    if depot_row == HOLDING_MODEL_ROW:
+        annual_payment = f"({annual_payment}+MAX(0,Model!$B$26*(1-Model!$C${depot_row})-Model!$K${PROPERTY_MODEL_ROW}))"
     payment_years = model_ref(f"F{depot_row}")
-    n = f"MAX(0,{years_cell})" if depot_row == 48 else f"MIN(MAX(0,{years_cell}),{payment_years})"
+    n = f"MAX(0,{years_cell})" if depot_row == HOLDING_MODEL_ROW else f"MIN(MAX(0,{years_cell}),{payment_years})"
     return (
         f"({balance}*(1+{rate})^{years_cell}+"
         f"IF({n}<=0,0,IF({rate}=0,{annual_payment}*{n},"
@@ -51,8 +56,18 @@ def depot_balance_at_retirement(depot_row, years_cell):
     )
 
 
+def property_balance_at_retirement(depot_row, years_cell):
+    balance = model_ref(f"B{depot_row}")
+    annual_payment = model_ref(f"K{depot_row}")
+    return f"({balance}+IF(MAX(0,{years_cell})<=0,0,{annual_payment}*MAX(0,{years_cell})))"
+
+
 def contribution_formula(depot_row, years_from_now):
     return f"IF({years_from_now}<{model_ref(f'F{depot_row}')},{model_ref(f'K{depot_row}')},0)"
+
+
+def property_contribution_formula(depot_row, offset):
+    return f"IF({offset}<Model!$B$17,{model_ref(f'K{depot_row}')},0)"
 
 
 def available_formula(depot_row, future_age):
@@ -180,6 +195,9 @@ def main():
         "Holding udbytte lav skat max",
         "Holding udbytteskat lav",
         "Holding loenskat",
+        "Handelsomkostning ved ejendomssalg",
+        "Selskabsskat af aarligt afdrag",
+        "Netto aarligt afdrag efter selskabsskat",
     ]
     for col, header in enumerate(depot_headers, start=1):
         ws.cell(47, col, header)
@@ -198,18 +216,42 @@ def main():
         ws[f"I{row}"] = depot["payout_years"]
         ws[f"J{row}"] = f"=$B$9*(1-C{row})"
         ws[f"K{row}"] = f"=E{row}*12"
+        if depot["name"] == PROPERTY_DEPOT_NAME:
+            ws[f"J{row}"] = 0
+            ws[f"K{row}"] = f"=E{row}*12"
         ws[f"L{row}"] = depot["low_dividend_limit"]
         ws[f"M{row}"] = depot["low_dividend_tax"]
         ws[f"N{row}"] = depot["salary_tax"]
-        for cell in [f"B{row}", f"E{row}", f"K{row}", f"L{row}"]:
+        ws[f"O{row}"] = depot.get("trade_cost", 0)
+        ws[f"P{row}"] = f'=IF(A{row}="{PROPERTY_DEPOT_NAME}",K{row}/MAX(0.000001,1-C{row})*C{row},0)'
+        ws[f"Q{row}"] = f'=IF(A{row}="{PROPERTY_DEPOT_NAME}",K{row},0)'
+        for cell in [f"B{row}", f"E{row}", f"K{row}", f"L{row}", f"P{row}", f"Q{row}"]:
             money_style(ws[cell])
-        for cell in [f"C{row}", f"D{row}", f"J{row}", f"M{row}", f"N{row}"]:
+        for cell in [f"C{row}", f"D{row}", f"J{row}", f"M{row}", f"N{row}", f"O{row}"]:
             pct_style(ws[cell])
-        for col in range(2, 15):
+        for col in range(2, 18):
             ws.cell(row, col).fill = input_fill
 
-    ws["A55"] = "Antagelser"
+    ws["A55"] = "Ejendomsdepot beregning"
     ws["A55"].font = Font(size=13, bold=True)
+    property_row = PROPERTY_MODEL_ROW
+    ws["A56"] = "Startvaerdi investerings-ejendomme"
+    ws["B56"] = f"=B{property_row}"
+    ws["C56"] = "=(3700000-3582782)+(3640000-3566770)+428000"
+    ws["A57"] = "Netto aarligt afdrag efter selskabsskat"
+    ws["B57"] = f"=K{property_row}"
+    ws["A58"] = "Selskabsskat af afdrag"
+    ws["B58"] = f"=P{property_row}"
+    ws["A59"] = "Bruttoresultat brugt paa afdrag"
+    ws["B59"] = f"=B57+B58"
+    ws["A60"] = "Handelsomkostning ved overflytning til holding"
+    ws["B60"] = f"=O{property_row}"
+    for cell in ["B56", "B57", "B58", "B59"]:
+        money_style(ws[cell])
+    pct_style(ws["B60"])
+
+    ws["A62"] = "Antagelser"
+    ws["A62"].font = Font(size=13, bold=True)
     assumptions = [
         "Alle hovedbeloeb er i realkroner, fordi afkastinput er realt.",
         "De sidste aar med lavere forbrug regnes baglaens fra levealderen inklusiv levealder.",
@@ -217,18 +259,18 @@ def main():
         "Depotudbetalinger kan kun bruges fra den beregnede startalder og inden for den valgte udbetalingsvarighed.",
         "Udbetalinger prioriteres pensionsdepot, holding, aktiedepot og ASK; resterende saldo investeres fortsat.",
         "Holding udbetales foerst som lavt beskattet udbytte op til den valgte graense og derefter som loen.",
-        "Progressionsgraensen for lavt beskattet udbytte fremskrives med inflationsinputtet i projektionen.",
-        "Indtjening fra investeringsejendomme fremskrives med inflationsinputtet for hvert simuleret aar.",
+        "Indtjening fra investeringsejendomme og progressionsgraense holdes i realkroner i simuleringen.",
+        "Ejendomsdepotet opbygges med nettoafdrag efter selskabsskat og overflyttes til holding efter B17 aar minus handelsomkostning.",
         "Holding loen reducerer selskabets skattepligtige vaerdistigning i modellen, saa selskabsskat kun beregnes af afkast ud over loen.",
         "Behov for selvpension i oversigten er et enkelt nutidsvaerdiestimat baseret paa vaegtet realafkast efter skat.",
         "Likviditetsmangel viser, om depoternes udbetalingsregler giver underskud undervejs selv om samlet portefolje er stor nok.",
         "Nominelle overbliksbeloeb fremskrives med inflationsinputtet til den relevante alder.",
         "Foerste alder med likviditetsmangel viser det foerste simulerede aar, hvor depoterne ikke kan daekke nettoforbruget.",
     ]
-    for row, text in enumerate(assumptions, start=56):
+    for row, text in enumerate(assumptions, start=63):
         ws[f"A{row}"] = text
 
-    for col, width in {"A": 46, "B": 18, "C": 22, "D": 20, "E": 20, "F": 22, "G": 28, "H": 20, "I": 22, "J": 22, "K": 20, "L": 24, "M": 22, "N": 18}.items():
+    for col, width in {"A": 46, "B": 18, "C": 42, "D": 20, "E": 20, "F": 22, "G": 28, "H": 20, "I": 22, "J": 22, "K": 20, "L": 24, "M": 22, "N": 18, "O": 28, "P": 24, "Q": 28}.items():
         ws.column_dimensions[col].width = width
     ws.freeze_panes = "A4"
 
@@ -258,17 +300,25 @@ def main():
 
     last_row = MAX_YEARS + 1
     helper_start = 19
-    helper_width = 19
+    helper_width = 24
     helper_need_cols = []
     helper_unmet_cols = []
     helper_nominal_unmet_cols = []
     helper_end_total_cols = []
 
     depot_rows_by_name = {depot["name"]: depot["row"] + 7 for depot in DEPOTS}
-    holding_row = depot_rows_by_name["Midler i holdingselskab"]
+    holding_row = depot_rows_by_name[HOLDING_DEPOT_NAME]
     pension_row = depot_rows_by_name["Midler paa pension"]
     aktie_row = depot_rows_by_name["Frie midler paa aktiedepot"]
     ask_row = depot_rows_by_name["Frie midler paa aktiesparekonto"]
+    property_row = depot_rows_by_name[PROPERTY_DEPOT_NAME]
+    end_offsets = {
+        holding_row: 16,
+        pension_row: 17,
+        aktie_row: 18,
+        ask_row: 19,
+        property_row: 20,
+    }
 
     for offset in range(MAX_YEARS):
         col = helper_start + offset * helper_width
@@ -278,6 +328,10 @@ def main():
                 f"Behov +{offset}",
                 f"Ejendom udbytte +{offset}",
                 f"Ejendom loen +{offset}",
+                f"Start ejendomsdepot +{offset}",
+                f"Ejendomsafdrag efter selskabsskat +{offset}",
+                f"Ejendom handelsomkostning +{offset}",
+                f"Ejendom overflytning til holding +{offset}",
                 f"Start holding +{offset}",
                 f"Start pension +{offset}",
                 f"Start aktiedepot +{offset}",
@@ -291,6 +345,7 @@ def main():
                 f"End pension +{offset}",
                 f"End aktiedepot +{offset}",
                 f"End ASK +{offset}",
+                f"End ejendomsdepot +{offset}",
                 f"Mangel +{offset}",
                 f"PV behov rest +{offset}",
                 f"Mangel nominel +{offset}",
@@ -300,9 +355,9 @@ def main():
             proj.cell(1, i, header)
             proj.column_dimensions[get_column_letter(i)].hidden = True
         helper_need_cols.append(letters[0])
-        helper_unmet_cols.append(letters[16])
-        helper_nominal_unmet_cols.append(letters[18])
-        helper_end_total_cols.append(letters[12:16])
+        helper_unmet_cols.append(letters[21])
+        helper_nominal_unmet_cols.append(letters[23])
+        helper_end_total_cols.append(letters[16:21])
 
     first_helper_col = get_column_letter(helper_start)
     last_helper_col = get_column_letter(helper_start + MAX_YEARS * helper_width - 1)
@@ -310,7 +365,13 @@ def main():
     for row in range(2, last_row + 1):
         proj[f"A{row}"] = f'=IF(Model!$B$5+ROW()-2<=Model!$B$4,Model!$B$5+ROW()-2,"")'
         proj[f"B{row}"] = f'=IF(A{row}="","",A{row}-Model!$B$5)'
-        starting_balances = [depot_balance_at_retirement(depot["row"] + 7, f"B{row}") for depot in DEPOTS]
+        starting_balances = []
+        for depot in DEPOTS:
+            depot_row = depot["row"] + 7
+            if depot["name"] == PROPERTY_DEPOT_NAME:
+                starting_balances.append(property_balance_at_retirement(depot_row, f"B{row}"))
+            else:
+                starting_balances.append(depot_balance_at_retirement(depot_row, f"B{row}"))
         proj[f"C{row}"] = f'=IF(A{row}="","",SUM({",".join(starting_balances)}))'
         proj[f"D{row}"] = f'=IF(A{row}="","",IF(A{row}>Model!$B$4-Model!$B$8,Model!$B$7,Model!$B$6))'
         first_property_dividend = get_column_letter(helper_start + 1)
@@ -322,21 +383,22 @@ def main():
         )
         proj[f"F{row}"] = f'=IF(A{row}="","",MAX(0,D{row}-E{row}))'
 
-        first_gross_col = get_column_letter(helper_start + 7)
-        last_gross_col = get_column_letter(helper_start + 11)
+        first_gross_col = get_column_letter(helper_start + 11)
+        last_gross_col = get_column_letter(helper_start + 15)
         unmet_cells = ",".join(f"{col}{row}" for col in helper_unmet_cols)
         life_offset = f"MIN({MAX_YEARS - 1},MAX(0,Model!$B$4-A{row}))"
         helper_range = f"{first_helper_col}{row}:{last_helper_col}{row}"
         proj[f"G{row}"] = f'=IF(A{row}="","",MAX(0,SUM({first_gross_col}{row}:{last_gross_col}{row})-F{row}))'
         proj[f"H{row}"] = (
             f'=IF(A{row}="","",SUM('
-            f'INDEX({helper_range},1,{life_offset}*{helper_width}+13),'
-            f'INDEX({helper_range},1,{life_offset}*{helper_width}+14),'
-            f'INDEX({helper_range},1,{life_offset}*{helper_width}+15),'
-            f'INDEX({helper_range},1,{life_offset}*{helper_width}+16)))'
+            f'INDEX({helper_range},1,{life_offset}*{helper_width}+17),'
+            f'INDEX({helper_range},1,{life_offset}*{helper_width}+18),'
+            f'INDEX({helper_range},1,{life_offset}*{helper_width}+19),'
+            f'INDEX({helper_range},1,{life_offset}*{helper_width}+20),'
+            f'INDEX({helper_range},1,{life_offset}*{helper_width}+21)))'
         )
         proj[f"I{row}"] = f'=IF(A{row}="","",SUM({unmet_cells})=0)'
-        proj[f"J{row}"] = f'=IF(A{row}="","",{get_column_letter(helper_start + 17)}{row})'
+        proj[f"J{row}"] = f'=IF(A{row}="","",{get_column_letter(helper_start + 22)}{row})'
         proj[f"K{row}"] = f'=IF(A{row}="","",SUM({unmet_cells}))'
         proj[f"L{row}"] = f'=IF(A{row}="","",IF(A{row}>=Model!$B$10,Model!$B$22*(1+Model!$B$13)^B{row},0))'
         proj[f"M{row}"] = f'=IF(A{row}="","",IF(Model!$B$15>0,Model!$B$24*(1+Model!$B$13)^B{row},0))'
@@ -353,9 +415,9 @@ def main():
 
         for offset in range(MAX_YEARS):
             col = helper_start + offset * helper_width
-            need_col, property_dividend, property_salary, holding_start, pension_start, aktie_start, ask_start = [get_column_letter(col + i) for i in range(7)]
-            gross_pension, holding_dividend, holding_salary, gross_aktie, gross_ask = [get_column_letter(col + i) for i in range(7, 12)]
-            end_holding, end_pension, end_aktie, end_ask, unmet_col, pv_col, nominal_unmet_col = [get_column_letter(col + i) for i in range(12, 19)]
+            need_col, property_dividend, property_salary, property_start, property_amortization, property_trade_cost, property_transfer, holding_start, pension_start, aktie_start, ask_start = [get_column_letter(col + i) for i in range(11)]
+            gross_pension, holding_dividend, holding_salary, gross_aktie, gross_ask = [get_column_letter(col + i) for i in range(11, 16)]
+            end_holding, end_pension, end_aktie, end_ask, end_property, unmet_col, pv_col, nominal_unmet_col = [get_column_letter(col + i) for i in range(16, 24)]
             future_age = f"(A{row}+{offset})"
             years_from_now = f"(B{row}+{offset})"
             target = f"IF({future_age}>Model!$B$4-Model!$B$8,Model!$B$7,Model!$B$6)"
@@ -368,12 +430,14 @@ def main():
                 depot_rows_by_name["Midler paa pension"]: pension_start,
                 depot_rows_by_name["Frie midler paa aktiedepot"]: aktie_start,
                 depot_rows_by_name["Frie midler paa aktiesparekonto"]: ask_start,
+                property_row: property_start,
             }
             end_cells = {
                 depot_rows_by_name["Midler i holdingselskab"]: end_holding,
                 depot_rows_by_name["Midler paa pension"]: end_pension,
                 depot_rows_by_name["Frie midler paa aktiedepot"]: end_aktie,
                 depot_rows_by_name["Frie midler paa aktiesparekonto"]: end_ask,
+                property_row: end_property,
             }
             gross_cells = {
                 ask_row: gross_ask,
@@ -385,22 +449,30 @@ def main():
                 depot_row = depot["row"] + 7
                 start_cell = start_cells[depot_row]
                 if offset == 0:
-                    base = depot_balance_at_retirement(depot_row, f"B{row}")
+                    if depot["name"] == PROPERTY_DEPOT_NAME:
+                        base = property_balance_at_retirement(depot_row, f"B{row}")
+                    else:
+                        base = depot_balance_at_retirement(depot_row, f"B{row}")
                 else:
-                    prev_end = get_column_letter(col - helper_width + list(end_cells).index(depot_row) + 12)
+                    prev_end = get_column_letter(col - helper_width + end_offsets[depot_row])
                     base = f"{prev_end}{row}"
-                proj[f"{start_cell}{row}"] = f'=IF(A{row}="","",{base}+{contribution_formula(depot_row, years_from_now)})'
+                if depot["name"] == PROPERTY_DEPOT_NAME:
+                    contribution = property_contribution_formula(depot_row, offset)
+                    proj[f"{property_amortization}{row}"] = f'=IF(A{row}="","",{contribution})'
+                    proj[f"{start_cell}{row}"] = f'=IF(A{row}="","",{base}+{property_amortization}{row})'
+                else:
+                    proj[f"{start_cell}{row}"] = f'=IF(A{row}="","",{base}+{contribution_formula(depot_row, years_from_now)})'
 
             remaining = f"{need_col}{row}"
-            property_gross = f"IF({offset}<Model!$B$17,Model!$B$26*(1+Model!$B$13)^{years_from_now},0)"
-            property_after_corp = f"{property_gross}*(1-Model!$C$48)"
-            low_dividend_limit = f"{model_ref(f'L{holding_row}')}*(1+Model!$B$13)^{years_from_now}"
+            property_gross = f"IF({offset}<Model!$B$17,Model!$B$26,0)"
+            property_after_corp = f"MAX(0,{property_gross}*(1-Model!$C$48)-{property_amortization}{row})"
+            low_dividend_limit = model_ref(f"L{holding_row}")
             proj[f"{property_dividend}{row}"] = (
                 f'=IF(A{row}="","",MIN({property_after_corp},{low_dividend_limit},'
                 f'MAX(0,{remaining})/MAX(0.000001,1-Model!$M$48)))'
             )
             remaining_after_property_dividend = f"MAX(0,{remaining}-{property_dividend}{row}*(1-Model!$M$48))"
-            property_salary_capacity = f"MAX(0,{property_gross}-{property_dividend}{row}/MAX(0.000001,1-Model!$C$48))"
+            property_salary_capacity = f"MAX(0,{property_gross}-{property_amortization}{row}/MAX(0.000001,1-Model!$C$48)-{property_dividend}{row}/MAX(0.000001,1-Model!$C$48))"
             proj[f"{property_salary}{row}"] = (
                 f'=IF(A{row}="","",MIN({property_salary_capacity},'
                 f'MAX(0,{remaining_after_property_dividend})/MAX(0.000001,1-Model!$N$48)))'
@@ -448,9 +520,16 @@ def main():
                 end_cell = end_cells[depot_row]
                 if depot_row == holding_row:
                     gross_cell = f"({holding_dividend}{row}+{holding_salary}{row})"
-                    gross_return = f"MAX(0,{start_cell}{row}-{gross_cell})*Model!$B$9"
+                    property_transfer_amount = f"{property_transfer}{row}"
+                    gross_return = f"MAX(0,{start_cell}{row}+{property_transfer_amount}-{gross_cell})*Model!$B$9"
                     corp_tax = f"MAX(0,{gross_return}-{holding_salary}{row})*Model!$C${holding_row}"
-                    proj[f"{end_cell}{row}"] = f'=IF(A{row}="","",MAX(0,{start_cell}{row}-{gross_cell})+{gross_return}-{corp_tax})'
+                    proj[f"{end_cell}{row}"] = f'=IF(A{row}="","",MAX(0,{start_cell}{row}+{property_transfer_amount}-{gross_cell})+{gross_return}-{corp_tax})'
+                elif depot_row == property_row:
+                    trade_cost = f"IF({offset}=Model!$B$17,{start_cell}{row}*Model!$O${property_row},0)"
+                    transfer = f"IF({offset}=Model!$B$17,{start_cell}{row}-{property_trade_cost}{row},0)"
+                    proj[f"{property_trade_cost}{row}"] = f'=IF(A{row}="","",{trade_cost})'
+                    proj[f"{property_transfer}{row}"] = f'=IF(A{row}="","",{transfer})'
+                    proj[f"{end_cell}{row}"] = f'=IF(A{row}="","",MAX(0,{start_cell}{row}-{property_trade_cost}{row}-{property_transfer}{row}))'
                 else:
                     gross_cell = gross_cells.get(depot_row)
                     if gross_cell is None:
@@ -532,7 +611,7 @@ def main():
 
         source_row = 'MATCH($B$3,\'Aarlig projektion\'!$A:$A,0)'
         source_col = helper_start + offset * helper_width
-        for plan_col, source_offset in zip(range(2, 18), [3, 4, 5, 6, None, None, None, 1, 2, 7, 8, 9, 10, 11, 16, None]):
+        for plan_col, source_offset in zip(range(2, 18), [7, 8, 9, 10, None, None, None, 1, 2, 11, 12, 13, 14, 15, 21, None]):
             col_letter = get_column_letter(plan_col)
             if source_offset is None:
                 continue
@@ -548,7 +627,7 @@ def main():
         plan[f"H{row}"] = f'=IF(A{row}="","",MAX(0,F{row}-G{row}))'
         end_total_parts = [
             f"INDEX('Aarlig projektion'!{get_column_letter(source_col + i)}:{get_column_letter(source_col + i)},{source_row})"
-            for i in range(12, 16)
+            for i in range(16, 21)
         ]
         plan[f"Q{row}"] = f'=IF(A{row}="","",SUM({",".join(end_total_parts)}))'
 
