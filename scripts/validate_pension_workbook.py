@@ -148,13 +148,20 @@ def main():
         "Brutto ASK",
         "Mangel",
         "Slutsaldo samlet",
+        "Likvid slutsaldo",
     ]
-    if [plan.cell(8, col).value for col in range(1, 18)] != expected_plan_headers:
+    if [plan.cell(8, col).value for col in range(1, 19)] != expected_plan_headers:
         raise AssertionError("Udbetalingsplan should keep the formatted plan column order")
     if plan["F8"].comment is None or plan["O8"].comment is None:
         raise AssertionError("Udbetalingsplan should keep explanatory notes on the formatted headers")
     if plan["G9"].value != '=IF(A9="","",IF(A9>=Model!$B$10,Model!$B$23,0)+IF(0<Model!$B$15,Model!$B$25,0)+H9*(1-Model!$M$48)+I9*(1-Model!$N$48))':
         raise AssertionError("Udbetalingsplan!G8 should use the real-value property helper payout")
+    if "AM:AM" in plan["R9"].value:
+        raise AssertionError("Udbetalingsplan!R9 should exclude the property depot from liquid ending balance")
+    if "AI:AI" not in plan["R9"].value or "AK:AK" not in plan["R9"].value or "AL:AL" not in plan["R9"].value:
+        raise AssertionError("Udbetalingsplan!R9 should sum the liquid ending balances")
+    if "IF(AND(A9>=Model!$H$49,A9<(Model!$H$49+Model!$I$49))" not in plan["R9"].value:
+        raise AssertionError("Udbetalingsplan!R9 should include pension only when it is available")
 
     wb = openpyxl.load_workbook(CALCULATED, data_only=True)
     projection = wb["Aarlig projektion"]

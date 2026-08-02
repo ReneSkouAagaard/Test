@@ -632,6 +632,7 @@ def main():
         "Brutto ASK",
         "Mangel",
         "Slutsaldo samlet",
+        "Likvid slutsaldo",
     ]
     group_headers = {
         "B7": "Beholdninger",
@@ -699,6 +700,16 @@ def main():
             for i in range(16, 21)
         ]
         plan[f"Q{row}"] = f'=IF(A{row}="","",SUM({",".join(end_total_parts)}))'
+        liquid_holding = f"INDEX('Aarlig projektion'!{get_column_letter(source_col + 16)}:{get_column_letter(source_col + 16)},{source_row})"
+        liquid_pension = f"INDEX('Aarlig projektion'!{get_column_letter(source_col + 17)}:{get_column_letter(source_col + 17)},{source_row})"
+        liquid_aktie = f"INDEX('Aarlig projektion'!{get_column_letter(source_col + 18)}:{get_column_letter(source_col + 18)},{source_row})"
+        liquid_ask = f"INDEX('Aarlig projektion'!{get_column_letter(source_col + 19)}:{get_column_letter(source_col + 19)},{source_row})"
+        pension_available = available_formula(pension_row, f"A{row}")
+        plan[f"R{row}"] = (
+            f'=IF(A{row}="","",SUM({liquid_holding},'
+            f'IF({pension_available},{liquid_pension},0),'
+            f'{liquid_aktie},{liquid_ask}))'
+        )
 
     plan_widths = {
         "A": 18,
@@ -718,11 +729,12 @@ def main():
         "O": 18,
         "P": 13,
         "Q": 13,
+        "R": 16,
     }
     for col, width in plan_widths.items():
         plan.column_dimensions[col].width = width
     for row in range(9, last_row + 8):
-        for col in range(2, 18):
+        for col in range(2, 19):
             money_style(plan.cell(row, col))
         for col in range(2, 6):
             position = "start" if col == 2 else "end" if col == 5 else "middle"
@@ -739,7 +751,7 @@ def main():
     plan.row_dimensions[6].height = 15.75
     plan.row_dimensions[7].height = 15.75
     plan.freeze_panes = "A35"
-    plan.auto_filter.ref = f"A8:Q{last_row + 7}"
+    plan.auto_filter.ref = f"A8:R{last_row + 7}"
 
     wb.save(OUTPUT)
     print(OUTPUT)
