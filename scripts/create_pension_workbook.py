@@ -46,7 +46,7 @@ def depot_balance_at_retirement(depot_row, years_cell):
     balance = model_ref(f"B{depot_row}")
     annual_payment = model_ref(f"K{depot_row}")
     if depot_row == HOLDING_MODEL_ROW:
-        annual_payment = f"({annual_payment}+MAX(0,Model!$B$26*(1-Model!$C${depot_row})-Model!$K${PROPERTY_MODEL_ROW}))"
+        annual_payment = f"({annual_payment}+MAX(0,Model!$B$26))"
     payment_years = model_ref(f"F{depot_row}")
     n = f"MAX(0,{years_cell})" if depot_row == HOLDING_MODEL_ROW else f"MIN(MAX(0,{years_cell}),{payment_years})"
     return (
@@ -106,7 +106,7 @@ def main():
         ("Inflation til nominelle visninger", 0.02, "%"),
         ("Bijob efter selvpension foer skat", 30_000, "kr pr maaned i dag"),
         ("Bijob varighed efter selvpension", 5, "aar"),
-        ("Investeringsejendomme foer skat", "=(149000+116000)/12", "kr pr maaned i dag"),
+        ("Investeringsejendomme efter selskabsskat", "=(149000+116000)/12", "kr pr maaned i dag, foer personlig skat"),
         ("Investeringsejendomme varighed efter selvpension", 30, "aar"),
         ("Progressionsgraense aktieindkomst", 158_800, "kr i dag, 2 personer"),
         ("Referencealder for depotudbetalinger", 73, "aar"),
@@ -135,9 +135,9 @@ def main():
         "B24": "=B14*12",
         "A25": "Bijob efter skat, aarligt",
         "B25": "=B24*(1-B12)",
-        "A26": "Investeringsejendomme foer skat, aarligt",
+        "A26": "Investeringsejendomme efter selskabsskat, aarligt",
         "B26": "=B16*12",
-        "A27": "Investeringsejendomme efter skat, aarligt",
+        "A27": "Investeringsejendomme efter personlig skat som loen, aarligt",
         "B27": "=B26*(1-B12)",
         "A28": "Selvpensionsalder",
         "B28": '=IFERROR(INDEX(\'Aarlig projektion\'!A2:A122,MATCH(TRUE,\'Aarlig projektion\'!I2:I122,0)),"Ikke opnaaet")',
@@ -260,7 +260,7 @@ def main():
         "Udbetalinger prioriteres pensionsdepot, holding, aktiedepot og ASK; resterende saldo investeres fortsat.",
         "Holding udbetales foerst som lavt beskattet udbytte op til den valgte graense og derefter som loen.",
         "Indtjening fra investeringsejendomme og progressionsgraense holdes i realkroner i simuleringen.",
-        "Ejendomsdepotet opbygges med nettoafdrag efter selskabsskat og overflyttes til holding efter B17 aar minus handelsomkostning.",
+        "Ejendomsdepotet opbygges med nettoafdrag efter selskabsskat som ekstra illikvid formue og overflyttes til holding efter B17 aar minus handelsomkostning.",
         "Holding loen reducerer selskabets skattepligtige vaerdistigning i modellen, saa selskabsskat kun beregnes af afkast ud over loen.",
         "Behov for selvpension i oversigten er et enkelt nutidsvaerdiestimat baseret paa vaegtet realafkast efter skat.",
         "Likviditetsmangel viser, om depoternes udbetalingsregler giver underskud undervejs selv om samlet portefolje er stor nok.",
@@ -288,7 +288,7 @@ def main():
         "Samlet likviditetsmangel",
         "Folkepension nominelt foer skat",
         "Bijob nominelt foer skat i foerste selvpensionsaar",
-        "Investeringsejendomme nominelt foer skat i foerste selvpensionsaar",
+        "Investeringsejendomme nominelt efter selskabsskat i foerste selvpensionsaar",
         "Foerste alder med likviditetsmangel",
         "Samlet likviditetsmangel nominelt",
         "Samlet portefolje ved selvpension nominelt",
@@ -465,14 +465,14 @@ def main():
 
             remaining = f"{need_col}{row}"
             property_gross = f"IF({offset}<Model!$B$17,Model!$B$26,0)"
-            property_after_corp = f"MAX(0,{property_gross}*(1-Model!$C$48)-{property_amortization}{row})"
+            property_after_corp = f"MAX(0,{property_gross})"
             low_dividend_limit = model_ref(f"L{holding_row}")
             proj[f"{property_dividend}{row}"] = (
                 f'=IF(A{row}="","",MIN({property_after_corp},{low_dividend_limit},'
                 f'MAX(0,{remaining})/MAX(0.000001,1-Model!$M$48)))'
             )
             remaining_after_property_dividend = f"MAX(0,{remaining}-{property_dividend}{row}*(1-Model!$M$48))"
-            property_salary_capacity = f"MAX(0,{property_gross}-{property_amortization}{row}/MAX(0.000001,1-Model!$C$48)-{property_dividend}{row}/MAX(0.000001,1-Model!$C$48))"
+            property_salary_capacity = f"MAX(0,{property_gross}/MAX(0.000001,1-Model!$C$48)-{property_dividend}{row}/MAX(0.000001,1-Model!$C$48))"
             proj[f"{property_salary}{row}"] = (
                 f'=IF(A{row}="","",MIN({property_salary_capacity},'
                 f'MAX(0,{remaining_after_property_dividend})/MAX(0.000001,1-Model!$N$48)))'

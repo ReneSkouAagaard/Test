@@ -115,10 +115,16 @@ def main():
         raise AssertionError("Model!F52 should take the property holding period from Model!B17")
     if formula_projection["J2"].value != '=IF(A2="","",AO2)':
         raise AssertionError("Aarlig projektion!J2 should stay a short helper-cell reference")
+    if "Model!$B$26*(1-Model!$C$48)" in formula_projection["T2"].value:
+        raise AssertionError("Aarlig projektion!T2 should treat property income as already after company tax")
+    if "Model!$B$26*(1-Model!$C$48)" in formula_projection["Z2"].value:
+        raise AssertionError("Aarlig projektion!Z2 should add property income to holding without taxing it again")
     if "Model!$B$26*(1+Model!$B$13)^" in formula_projection["T2"].value:
         raise AssertionError("Aarlig projektion!T2 should keep property income in real kroner")
     if "Model!$L$48*(1+Model!$B$13)^" in formula_projection["T2"].value:
         raise AssertionError("Aarlig projektion!T2 should keep the dividend threshold in real kroner")
+    if "-W2" in formula_projection["T2"].value or "-W2" in formula_projection["U2"].value:
+        raise AssertionError("Aarlig projektion!T2/U2 should not subtract property amortization from liquid property payout capacity")
     if "0=Model!$B$17" not in formula_projection["Y2"].value:
         raise AssertionError("Aarlig projektion!Y2 should transfer property value to holding based on Model!B17")
     if "V2*Model!$O$52" not in formula_projection["X2"].value:
