@@ -129,7 +129,31 @@ def main():
         raise AssertionError("Aarlig projektion!Y2 should transfer property value to holding based on Model!B17")
     if "V2*Model!$O$52" not in formula_projection["X2"].value:
         raise AssertionError("Aarlig projektion!X2 should show 5% property trading cost before holding transfer")
-    if formulas["Udbetalingsplan"]["G8"].value != '=IF(A8="","",IF(A8>=Model!$B$10,Model!$B$23,0)+IF(0<Model!$B$15,Model!$B$25,0)+I8*(1-Model!$M$48)+J8*(1-Model!$N$48))':
+    plan = formulas["Udbetalingsplan"]
+    expected_plan_headers = [
+        "Alder",
+        "Holding start",
+        "Pensionsdepot start",
+        "Aktiedepot start",
+        "ASK start",
+        "Forbrug efter skat",
+        "Indkomst efter skat",
+        "Ejendom udbytte",
+        "Ejendom loen",
+        "Netto fra depoter",
+        "Brutto pension",
+        "Holding udbytte",
+        "Holding loen",
+        "Brutto aktiedepot",
+        "Brutto ASK",
+        "Mangel",
+        "Slutsaldo samlet",
+    ]
+    if [plan.cell(8, col).value for col in range(1, 18)] != expected_plan_headers:
+        raise AssertionError("Udbetalingsplan should keep the formatted plan column order")
+    if plan["F8"].comment is None or plan["O8"].comment is None:
+        raise AssertionError("Udbetalingsplan should keep explanatory notes on the formatted headers")
+    if plan["G9"].value != '=IF(A9="","",IF(A9>=Model!$B$10,Model!$B$23,0)+IF(0<Model!$B$15,Model!$B$25,0)+H9*(1-Model!$M$48)+I9*(1-Model!$N$48))':
         raise AssertionError("Udbetalingsplan!G8 should use the real-value property helper payout")
 
     wb = openpyxl.load_workbook(CALCULATED, data_only=True)

@@ -2,7 +2,8 @@ from pathlib import Path
 
 from openpyxl import Workbook
 from openpyxl.chart import LineChart, Reference
-from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.comments import Comment
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 
@@ -35,6 +36,41 @@ def style_header(row):
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill("solid", fgColor="1F4E78")
         cell.alignment = Alignment(horizontal="center")
+
+
+def plan_group_border(position):
+    medium = Side(style="medium")
+    return Border(
+        left=medium if position in {"start", "single"} else None,
+        right=medium if position in {"end", "single"} else None,
+        top=medium,
+        bottom=medium,
+    )
+
+
+def plan_data_border(position):
+    medium = Side(style="medium")
+    return Border(
+        left=medium if position in {"start", "single"} else None,
+        right=medium if position in {"end", "single"} else None,
+    )
+
+
+def add_plan_comments(plan):
+    comments = {
+        "F8": "René Aagaard:\nDit årlige forbrugsbehov i realkroner. Den bruger normalt Aarligt forbrug efter skat, men skifter til Lavere aarligt forbrug i sidste aar i de sidste år før levealderen.",
+        "G8": "René Aagaard:\nIndkomst der reducerer behovet for udbetaling fra depoter. Den består af folkepension efter skat, bijob efter skat, samt investeringsejendomme efter personlig skat. Ejendomsindtægten kommer fra kolonne H og I efter udbytte-/lønbeskatning.",
+        "H8": "René Aagaard:\nDen del af investeringsejendomsindtjeningen, der kan trækkes ud som udbytte via holding. Beløbet er efter selskabsskat, men før personlig udbytteskat.",
+        "I8": "René Aagaard:\nDen del af investeringsejendomsindtjeningen, der trækkes ud som løn, hvis udbytte ikke er nok eller grænsen er brugt. Beløbet er før personlig lønskat. Løn reducerer selskabets skattepligtige overskud.",
+        "J8": "René Aagaard:\nDet beløb depoterne skal dække efter anden indkomst:\n\nForbrug efter skat - Indkomst efter skat\n\nHvis indkomsten er højere end forbruget, bliver værdien 0.\n\nKolonnerne K - O angiver det bruttobeløb der skal trækkes for at få nettobeløbet i denne kolonne.",
+        "K8": "René Aagaard:\nBruttoudbetaling fra pensionsdepotet det år. Den kan kun bruges fra pensionsdepotets startalder og inden for den valgte udbetalingsperiode.",
+        "L8": "René Aagaard:\nBruttoudbetaling fra holdingselskabet som udbytte. Det bruges efter pension i prioriteringen og inden for den lave udbyttegrænse, fratrukket det udbytte der allerede er brugt fra ejendomsindtjeningen.",
+        "M8": "René Aagaard:\nBruttoudbetaling fra holdingselskabet som løn. Den bruges hvis udbytte ikke dækker resten af behovet.",
+        "N8": "René Aagaard:\nBruttoudbetaling fra frit aktiedepot. Skatten på udbetaling er sat til 0 i modellen, så brutto svarer her til netto.",
+        "O8": "René Aagaard:\nBruttoudbetaling fra aktiesparekonto. Også her er udbetalingsskat sat til 0 i modellen.",
+    }
+    for cell, text in comments.items():
+        plan[cell].comment = Comment(text, "René Aagaard")
 
 
 def model_ref(cell):
@@ -586,9 +622,9 @@ def main():
         "ASK start",
         "Forbrug efter skat",
         "Indkomst efter skat",
-        "Netto fra depoter",
         "Ejendom udbytte",
         "Ejendom loen",
+        "Netto fra depoter",
         "Brutto pension",
         "Holding udbytte",
         "Holding loen",
@@ -597,13 +633,46 @@ def main():
         "Mangel",
         "Slutsaldo samlet",
     ]
+    group_headers = {
+        "B7": "Beholdninger",
+        "F7": "Forbrug",
+        "G7": "Indkomst",
+        "J7": "Udbetaling fra depoter",
+    }
+    for cell, value in group_headers.items():
+        plan[cell] = value
+        plan[cell].font = Font(bold=True)
+        plan[cell].alignment = Alignment(horizontal="center")
+    for col in range(2, 6):
+        position = "start" if col == 2 else "end" if col == 5 else "middle"
+        plan.cell(7, col).border = plan_group_border(position)
+    for col in [6, 7]:
+        plan.cell(7, col).border = plan_group_border("single")
+    for col in range(8, 10):
+        position = "start" if col == 8 else "end"
+        plan.cell(7, col).border = plan_group_border(position)
+    for col in range(10, 16):
+        position = "start" if col == 10 else "end" if col == 15 else "middle"
+        plan.cell(7, col).border = plan_group_border(position)
     for col, header in enumerate(plan_headers, start=1):
-        plan.cell(7, col, header)
-    style_header(plan[7])
+        plan.cell(8, col, header)
+    style_header(plan[8])
+    for col in range(2, 6):
+        position = "start" if col == 2 else "end" if col == 5 else "middle"
+        plan.cell(8, col).border = plan_group_border(position)
+    for col in [6, 7]:
+        plan.cell(8, col).border = plan_group_border("single")
+    for col in range(8, 10):
+        position = "start" if col == 8 else "end"
+        plan.cell(8, col).border = plan_group_border(position)
+    for col in range(11, 16):
+        position = "start" if col == 11 else "end" if col == 15 else "middle"
+        plan.cell(8, col).border = plan_group_border(position)
+    add_plan_comments(plan)
 
-    for row in range(8, last_row + 7):
-        offset = row - 8
-        if row == 8:
+    for row in range(9, last_row + 8):
+        offset = row - 9
+        if row == 9:
             plan[f"A{row}"] = '=IF(ISNUMBER($B$3),$B$3,"")'
         else:
             prev = row - 1
@@ -611,7 +680,7 @@ def main():
 
         source_row = 'MATCH($B$3,\'Aarlig projektion\'!$A:$A,0)'
         source_col = helper_start + offset * helper_width
-        for plan_col, source_offset in zip(range(2, 18), [7, 8, 9, 10, None, None, None, 1, 2, 11, 12, 13, 14, 15, 21, None]):
+        for plan_col, source_offset in zip(range(2, 18), [7, 8, 9, 10, None, None, 1, 2, None, 11, 12, 13, 14, 15, 21, None]):
             col_letter = get_column_letter(plan_col)
             if source_offset is None:
                 continue
@@ -623,21 +692,54 @@ def main():
         public_income = f"IF({future_age}>=Model!$B$10,Model!$B$23,0)"
         job_income = f"IF({offset}<Model!$B$15,Model!$B$25,0)"
         plan[f"F{row}"] = f'=IF(A{row}="","",{target})'
-        plan[f"G{row}"] = f'=IF(A{row}="","",{public_income}+{job_income}+I{row}*(1-Model!$M$48)+J{row}*(1-Model!$N$48))'
-        plan[f"H{row}"] = f'=IF(A{row}="","",MAX(0,F{row}-G{row}))'
+        plan[f"G{row}"] = f'=IF(A{row}="","",{public_income}+{job_income}+H{row}*(1-Model!$M$48)+I{row}*(1-Model!$N$48))'
+        plan[f"J{row}"] = f'=IF(A{row}="","",MAX(0,F{row}-G{row}))'
         end_total_parts = [
             f"INDEX('Aarlig projektion'!{get_column_letter(source_col + i)}:{get_column_letter(source_col + i)},{source_row})"
             for i in range(16, 21)
         ]
         plan[f"Q{row}"] = f'=IF(A{row}="","",SUM({",".join(end_total_parts)}))'
 
-    for col in range(1, 18):
-        plan.column_dimensions[get_column_letter(col)].width = 18
-    for row in range(8, last_row + 7):
+    plan_widths = {
+        "A": 18,
+        "B": 13,
+        "C": 13,
+        "D": 13,
+        "E": 13,
+        "F": 21.43,
+        "G": 23,
+        "H": 18,
+        "I": 13,
+        "J": 21.29,
+        "K": 23.57,
+        "L": 18,
+        "M": 13,
+        "N": 26.71,
+        "O": 18,
+        "P": 13,
+        "Q": 13,
+    }
+    for col, width in plan_widths.items():
+        plan.column_dimensions[col].width = width
+    for row in range(9, last_row + 8):
         for col in range(2, 18):
             money_style(plan.cell(row, col))
-    plan.freeze_panes = "A8"
-    plan.auto_filter.ref = f"A7:Q{last_row + 6}"
+        for col in range(2, 6):
+            position = "start" if col == 2 else "end" if col == 5 else "middle"
+            plan.cell(row, col).border = plan_data_border(position)
+        for col in [6, 7]:
+            plan.cell(row, col).border = plan_data_border("single")
+        for col in range(8, 10):
+            position = "start" if col == 8 else "end"
+            plan.cell(row, col).border = plan_data_border(position)
+        for col in range(11, 16):
+            position = "start" if col == 11 else "end" if col == 15 else "middle"
+            plan.cell(row, col).border = plan_data_border(position)
+    plan.row_dimensions[1].height = 21
+    plan.row_dimensions[6].height = 15.75
+    plan.row_dimensions[7].height = 15.75
+    plan.freeze_panes = "A35"
+    plan.auto_filter.ref = f"A8:Q{last_row + 7}"
 
     wb.save(OUTPUT)
     print(OUTPUT)
