@@ -103,18 +103,29 @@ def main():
         raise AssertionError("Model!L48 should reference the progressionsgraense input in Model!B18")
     if formula_model["H48"].value != "=$B$19-G48":
         raise AssertionError("Model!H48 should calculate payout start from reference age in Model!B19")
-    if formula_model["B52"].value != "=((3700000-3582782)+(3640000-3566770)+428000)":
-        raise AssertionError("Model!B52 should show the explicit investment-property starting equity calculation")
+    if formula_model["B20"].value != 0.015:
+        raise AssertionError("Model!B20 should contain the adjustable real property value growth input")
+    if formula_model["B52"].value != "=(3700000+3640000+480000+3000000)":
+        raise AssertionError("Model!B52 should show the total investment-property starting value")
+    if formula_model["C52"].value != 0.22:
+        raise AssertionError("Model!C52 should tax nominal property value gains on sale at 22%")
+    if formula_model["J52"].value != "=$B$20":
+        raise AssertionError("Model!J52 should take real property value growth from Model!B20")
     if formula_model["K52"].value != "=E52*12":
         raise AssertionError("Model!K52 should show the 144,000 kr annual net amortization after company tax")
-    if formula_model["P52"].value != '=IF(A52="Investerings-ejendomme",K52/MAX(0.000001,1-C52)*C52,0)':
-        raise AssertionError("Model!P52 should gross up the company tax needed for the net amortization")
+    if formula_model["P52"].value != 0:
+        raise AssertionError("Model!P52 should not tax property amortization")
     if formula_model["O52"].value != 0.05:
         raise AssertionError("Model!O52 should show the 5% property trading cost")
     if formula_model["F52"].value != "=$B$17":
         raise AssertionError("Model!F52 should take the property holding period from Model!B17")
+    expected_after_tax_real_return = "=$B$9-((1+$B$9)*(1+$B$13)-1)*C48/(1+$B$13)"
+    if formula_model["J48"].value != expected_after_tax_real_return:
+        raise AssertionError("Model!J48 should tax nominal gains and convert back to real return")
     if formula_projection["J2"].value != '=IF(A2="","",AO2)':
         raise AssertionError("Aarlig projektion!J2 should stay a short helper-cell reference")
+    if "((1+Model!$B$9)*(1+Model!$B$13)-1)/(1+Model!$B$13)" not in formula_projection["AI2"].value:
+        raise AssertionError("Aarlig projektion!AI2 should tax holding nominal value growth in real terms")
     if "Model!$B$26*(1-Model!$C$48)" in formula_projection["T2"].value:
         raise AssertionError("Aarlig projektion!T2 should treat property income as already after company tax")
     if "Model!$B$26*(1-Model!$C$48)" in formula_projection["Z2"].value:
@@ -129,6 +140,10 @@ def main():
         raise AssertionError("Aarlig projektion!Y2 should transfer property value to holding based on Model!B17")
     if "V2*Model!$O$52" not in formula_projection["X2"].value:
         raise AssertionError("Aarlig projektion!X2 should show 5% property trading cost before holding transfer")
+    if "*Model!$C$52" not in formula_projection["Y2"].value or "Model!$B$13" not in formula_projection["Y2"].value:
+        raise AssertionError("Aarlig projektion!Y2 should deduct tax on nominal property value gain before holding transfer")
+    if "+Model!$J$52" not in formula_projection["AM2"].value:
+        raise AssertionError("Aarlig projektion!AM2 should grow property market value annually in real terms")
     plan = formulas["Udbetalingsplan"]
     expected_plan_headers = [
         "Alder",
@@ -173,7 +188,7 @@ def main():
     last_nominal_unmet = f"{get_column_letter(helper_start + 120 * helper_width + 23)}2"
     for cell in ["C2", "D2", "F2", "G2", "H2", "J2", "K2", "P2", "Q2", "R2", "S2", "V2", "W2", "X2", "Y2", "AI2", "AM2", last_unmet, last_nominal_unmet]:
         assert_numeric(projection, cell)
-    for cell in ["B18", "B19", "B34", "B35", "B36", "B38", "B39", "B40", "B52", "B56", "B57", "B58", "B59", "B60"]:
+    for cell in ["B18", "B19", "B20", "B34", "B35", "B36", "B38", "B39", "B40", "B52", "B56", "B57", "B58", "B59", "B60", "B61", "B62"]:
         assert_numeric(model, cell)
     optimal_age = assert_numeric(model, "B28")
     if optimal_age < model["B5"].value or optimal_age > model["B4"].value:
@@ -191,8 +206,8 @@ def main():
     baseline_j2 = assert_numeric(projection, "J2")
     if calculated_j2_with_change("B16", 10_000) == baseline_j2:
         raise AssertionError("Changing Model!B16 did not change Aarlig projektion!J2")
-    if abs(calculated_j2_with_change("B13", 0.05) - baseline_j2) > 1:
-        raise AssertionError("Changing nominal inflation should not change real-value Aarlig projektion!J2")
+    if calculated_j2_with_change("B13", 0.05) == baseline_j2:
+        raise AssertionError("Changing nominal inflation should change real-value Aarlig projektion!J2 when nominal gains are taxed")
 
     print("Workbook calculation OK")
 
